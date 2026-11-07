@@ -820,10 +820,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write((LOG.length ? LOG.join("\n") : "OK — no errors") + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-07-E  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("تم بناء المشروع v2 ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-07-E — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
