@@ -40,7 +40,11 @@ var CFG = {
     WHITE:  [1, 1, 1],
     FONT: { Black: "", Bold: "", Regular: "" },   // leave "" to auto-detect, or type PostScript names
     FONT_FAMILY_MATCH: /bloomberg|neue ?haas|neuehaas/i,
-    XR: 1790,          // captions right edge (safe area)
+    XR: 1790,
+    // Measured on AE 2026 screenshots: text renders shifted RIGHT by half its own width compared with
+    // what sourceRectAtTime() reports at build time. The builder compensates by this fraction of the width.
+    // If text ever sits too far LEFT on another AE version, set this to 0.
+    TEXT_SHIFT: 0.5,          // captions right edge (safe area)
     WIPE: 0.5,
     DEPTH: [1800, 900, 300],   // z of far / mid / near layers
     PARTICLES: 28
@@ -147,7 +151,7 @@ function text(comp, name, str, o) {
 function placeX(l, side, pos, t) {
     var r = l.sourceRectAtTime(t, false);
     tr(l).property("ADBE Anchor Point").setValue([r.left + r.width / 2, 0]);
-    var x = pos[0] + (side === "r" ? -r.width / 2 : side === "l" ? r.width / 2 : 0);
+    var x = pos[0] + (side === "r" ? -r.width / 2 : side === "l" ? r.width / 2 : 0) - CFG.TEXT_SHIFT * r.width;
     P(l).setValue([x, pos[1]]);
 }
 
@@ -263,9 +267,9 @@ function stickLeftOf(l, refName, gap) {
     var rp = P(r).valueAtTime(te, false);
     var rs = tr(r).property("ADBE Scale").value[0] / 100;
     var ru = l.sourceRectAtTime(0, false);
-    var leftOfRef = rp[0] + (rb.left - ra[0]) * rs;            // left edge of the number on screen
+    var leftOfRef = rp[0] + (rb.left - ra[0] + CFG.TEXT_SHIFT * rb.width) * rs;   // rendered left edge of the number
     tr(l).property("ADBE Anchor Point").setValue([ru.left + ru.width / 2, 0]);
-    P(l).setValue([leftOfRef - gap - ru.width / 2, rp[1]]);
+    P(l).setValue([leftOfRef - gap - ru.width / 2 - CFG.TEXT_SHIFT * ru.width, rp[1]]);
 }
 
 function solid(comp, color, name) { return comp.layers.addSolid(color, name, CFG.W, CFG.H, 1); }
@@ -768,6 +772,7 @@ function checkSafe(c, id) {
         var anc = tr(l).property("ADBE Anchor Point").valueAtTime(t, false);
         var sc = tr(l).property("ADBE Scale").valueAtTime(t, false);
         var x0 = pos[0] + (r.left - anc[0]) * sc[0] / 100, y0 = pos[1] + (r.top - anc[1]) * sc[1] / 100;
+        if (l instanceof TextLayer) x0 += CFG.TEXT_SHIFT * r.width * sc[0] / 100;
         var x1 = x0 + r.width * sc[0] / 100, y1 = y0 + r.height * sc[1] / 100;
         var box = "[" + Math.round(x0) + "," + Math.round(y0) + " → " + Math.round(x1) + "," + Math.round(y1) + "]";
         if (x0 < 0 || y0 < 0 || x1 > CFG.W || y1 > CFG.H) LOG.push("SAFE " + id + " / " + l.name + ": outside frame " + box);
