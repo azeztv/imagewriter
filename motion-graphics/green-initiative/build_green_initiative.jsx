@@ -46,7 +46,7 @@ var CFG = {
     PARTICLES: 28
 };
 
-var LOG = [];
+var LOG = [], DIAG = [];
 var ORDER = ["S01","S02","S03","S04","S05","S06","S07","S08","S09","S10","S11","S12"];
 var ROOT = File($.fileName).parent;
 
@@ -129,9 +129,23 @@ function text(comp, name, str, o) {
     try { td.autoLeading = false; td.leading = Math.round((o.size || 60) * 1.3); } catch (e) {}
     p.setValue(td);
     P(l).setValue(o.pos);
-    P(l).expression = edgeExpr(side) + '[value[0]+(anchorPoint[0]-e)*scale[0]/100, value[1]]';
+    alignStatic(l, side, 0);   // no expressions: anchor measured now, at build time
+    try {
+        var tdc = p.value, r0 = l.sourceRectAtTime(0, false);
+        var dir = "?"; try { dir = String(tdc.direction); } catch (e) {}
+        DIAG.push(comp.name + " / " + name + " | just=" + String(tdc.justification) + " dir=" + dir +
+                  " font=" + tdc.font + " | rect.left=" + Math.round(r0.left) + " w=" + Math.round(r0.width) +
+                  " | anchorX=" + Math.round(tr(l).property("ADBE Anchor Point").value[0]) + " posX=" + Math.round(o.pos[0]));
+    } catch (e) {}
     if (o.shadow !== false) shadow(l, o.shadowOp || 50);
     return l;
+}
+
+// Put the layer's anchor on the chosen edge of its real text box (measured at time t).
+function alignStatic(l, side, t) {
+    var r = l.sourceRectAtTime(t, false);
+    var ex = side === "r" ? r.left + r.width : side === "c" ? r.left + r.width / 2 : r.left;
+    tr(l).property("ADBE Anchor Point").setValue([ex, 0]);
 }
 
 function shadow(l, op) {
@@ -234,15 +248,18 @@ function counter(comp, name, target, t0, dur, o) {
     var dec = o.decimals || 0;
     l.property("ADBE Text Properties").property("ADBE Text Document").expression =
         'var v=effect("Count")(1).value;' + (dec ? '(Math.abs(v)<0.05?0:v).toFixed(' + dec + ');' : 'Math.round(v).toString();');
+    try { alignStatic(l, o.side || "r", t0 + dur + 0.04); } catch (e) { LOG.push(name + ": align " + e.toString()); }
     return l;
 }
 
 // RTL unit word placed immediately to the LEFT of a number layer (same baseline).
 function stickLeftOf(l, refName, gap) {
-    P(l).expression =
-        'var r=thisComp.layer("' + refName + '");var rb=r.sourceRectAtTime(time,false);' +
-        'var X=r.toComp([rb.left,0])[0]-' + gap + ';' + edgeExpr("r") +
-        '[X+(anchorPoint[0]-e)*scale[0]/100, r.position[1]]';
+    var c = l.containingComp, r = c.layer(refName), te = c.duration - 0.04;
+    var rb = r.sourceRectAtTime(te, false);
+    var ra = tr(r).property("ADBE Anchor Point").value;
+    var rp = P(r).valueAtTime(te, false);
+    var rs = tr(r).property("ADBE Scale").value[0] / 100;
+    P(l).setValue([rp[0] + (rb.left - ra[0]) * rs - gap, rp[1]]);
 }
 
 function solid(comp, color, name) { return comp.layers.addSolid(color, name, CFG.W, CFG.H, 1); }
@@ -273,12 +290,11 @@ function scrimRight(comp, op) {
 
 function sectionTag(comp, str, y, t0, animate) {
     var name = "TAG_TXT";
-    var box = comp.layers.addShape(); box.name = "TAG_BOX";
-    newGroup(box, "Box"); rectItem(box, "Box", [200, 80], [-100, 0]); fill(box, "Box", CFG.ORANGE);
     var t = text(comp, name, str, { w: "Black", size: 52, pos: [CFG.XR - 32, y], shadow: false });
-    items(box, "Box").property(1).property("ADBE Vector Rect Size").expression = 'var b=thisComp.layer("' + name + '").sourceRectAtTime(time,false);[b.width+64,b.height+36]';
-    items(box, "Box").property(1).property("ADBE Vector Rect Position").expression = 'var b=thisComp.layer("' + name + '").sourceRectAtTime(time,false);[-(b.width+64)/2,0]';
-    P(box).expression = 'var l=thisComp.layer("' + name + '");var b=l.sourceRectAtTime(time,false);[' + CFG.XR + ', l.position[1]+b.top+b.height/2]';
+    var r = t.sourceRectAtTime(0, false), bw = r.width + 64, bh = r.height + 36;
+    var box = comp.layers.addShape(); box.name = "TAG_BOX";
+    newGroup(box, "Box"); rectItem(box, "Box", [bw, bh], [-bw / 2, 0]); fill(box, "Box", CFG.ORANGE);
+    P(box).setValue([CFG.XR, y + r.top + r.height / 2]);
     box.moveAfter(t);
     if (animate !== false) {
         keys(tr(box).property("ADBE Scale"), [t0, t0 + 0.45], [[0, 100], [100, 100]], 85);
@@ -732,6 +748,7 @@ function checkSafe(c, id) {
         if (l.threeDLayer || l.guideLayer || !l.enabled) continue;
         if (!(l instanceof TextLayer) && !(l instanceof ShapeLayer)) continue;
         if (/^(Dust|Wipe|Scrim|Vignette|LightSweep)/.test(l.name)) continue;
+        try { var ee = tr(l).property("ADBE Position").expressionError; if (ee) LOG.push("EXPR " + id + " / " + l.name + ": " + ee); } catch (e) {}
         var r; try { r = l.sourceRectAtTime(t, false); } catch (e) { continue; }
         if (!r || r.width <= 0) continue;
         var pos = tr(l).property("ADBE Position").valueAtTime(t, false);
@@ -785,7 +802,7 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write(LOG.length ? LOG.join("\n") : "OK — no errors"); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write((LOG.length ? LOG.join("\n") : "OK — no errors") + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
 alert("تم بناء المشروع v2 ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
