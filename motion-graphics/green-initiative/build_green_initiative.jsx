@@ -121,15 +121,15 @@ function text(comp, name, str, o) {
     td.applyFill = true; td.fillColor = o.color || CFG.WHITE;
     td.applyStroke = false;
     var side = o.side || "r";
-    td.justification = side === "c" ? ParagraphJustification.CENTER_JUSTIFY :
-                       side === "l" ? ParagraphJustification.LEFT_JUSTIFY : ParagraphJustification.RIGHT_JUSTIFY;
+    // AE 2026 renders these layers centred whatever justification is asked for, so every layer is
+    // centred on purpose and its position is computed from its measured width (see placeX).
+    td.justification = ParagraphJustification.CENTER_JUSTIFY;
     try { td.composerEngine = ComposerEngine.UNIVERSAL_TYPE_ENGINE; } catch (e) {}
     try { td.direction = (o.rtl === false) ? ParagraphDirection.DIRECTION_LEFT_TO_RIGHT : ParagraphDirection.DIRECTION_RIGHT_TO_LEFT; } catch (e) {}
     try { td.digitSet = DigitSet.ARABIC_DIGITS; } catch (e) {}   // 0-9, never ٠-٩
     try { td.autoLeading = false; td.leading = Math.round((o.size || 60) * 1.3); } catch (e) {}
     p.setValue(td);
-    P(l).setValue(o.pos);
-    alignStatic(l, side, 0);   // no expressions: anchor measured now, at build time
+    placeX(l, side, o.pos, 0);   // no expressions: measured now, at build time
     try {
         var tdc = p.value, r0 = l.sourceRectAtTime(0, false);
         var dir = "?"; try { dir = String(tdc.direction); } catch (e) {}
@@ -142,10 +142,13 @@ function text(comp, name, str, o) {
 }
 
 // Put the layer's anchor on the chosen edge of its real text box (measured at time t).
-function alignStatic(l, side, t) {
+// Anchor on the centre of the measured text box; position so that the requested edge
+// (r = right edge, c = centre, l = left edge) lands exactly on pos[0].
+function placeX(l, side, pos, t) {
     var r = l.sourceRectAtTime(t, false);
-    var ex = side === "r" ? r.left + r.width : side === "c" ? r.left + r.width / 2 : r.left;
-    tr(l).property("ADBE Anchor Point").setValue([ex, 0]);
+    tr(l).property("ADBE Anchor Point").setValue([r.left + r.width / 2, 0]);
+    var x = pos[0] + (side === "r" ? -r.width / 2 : side === "l" ? r.width / 2 : 0);
+    P(l).setValue([x, pos[1]]);
 }
 
 function shadow(l, op) {
@@ -248,7 +251,7 @@ function counter(comp, name, target, t0, dur, o) {
     var dec = o.decimals || 0;
     l.property("ADBE Text Properties").property("ADBE Text Document").expression =
         'var v=effect("Count")(1).value;' + (dec ? '(Math.abs(v)<0.05?0:v).toFixed(' + dec + ');' : 'Math.round(v).toString();');
-    try { alignStatic(l, o.side || "r", t0 + dur + 0.04); } catch (e) { LOG.push(name + ": align " + e.toString()); }
+    try { placeX(l, o.side || "r", o.pos, t0 + dur + 0.04); } catch (e) { LOG.push(name + ": align " + e.toString()); }
     return l;
 }
 
@@ -259,7 +262,10 @@ function stickLeftOf(l, refName, gap) {
     var ra = tr(r).property("ADBE Anchor Point").value;
     var rp = P(r).valueAtTime(te, false);
     var rs = tr(r).property("ADBE Scale").value[0] / 100;
-    P(l).setValue([rp[0] + (rb.left - ra[0]) * rs - gap, rp[1]]);
+    var ru = l.sourceRectAtTime(0, false);
+    var leftOfRef = rp[0] + (rb.left - ra[0]) * rs;            // left edge of the number on screen
+    tr(l).property("ADBE Anchor Point").setValue([ru.left + ru.width / 2, 0]);
+    P(l).setValue([leftOfRef - gap - ru.width / 2, rp[1]]);
 }
 
 function solid(comp, color, name) { return comp.layers.addSolid(color, name, CFG.W, CFG.H, 1); }
@@ -309,10 +315,18 @@ function accentBar(comp, x, y, w, t0) {
     return l;
 }
 
+function linesBlock(comp, base, str, o, t0) {
+    var parts = str.split("\r"), out = [], lead = Math.round((o.size || 60) * 1.3);
+    for (var i = 0; i < parts.length; i++) {
+        var l = text(comp, base + (parts.length > 1 ? "_" + (i + 1) : ""), parts[i],
+            { w: o.w, size: o.size, color: o.color, side: o.side || "r", pos: [o.pos[0], o.pos[1] + i * lead] });
+        revealWords(l, t0 + i * 0.25, 0.8, 50);
+        out.push(l);
+    }
+    return out;
+}
 function headline(comp, str, y, t0, size) {
-    var l = text(comp, "HEADLINE", str, { w: "Black", size: size || 84, pos: [CFG.XR, y] });
-    revealWords(l, t0, 0.9, 50);
-    return l;
+    return linesBlock(comp, "HEADLINE", str, { w: "Black", size: size || 84, pos: [CFG.XR, y] }, t0);
 }
 
 // ── 3D ──
@@ -538,8 +552,7 @@ BUILD.S02 = function (c) {
     keys(tr(frame).property("ADBE Scale"), [0.3, 0.9], [[0, 100], [100, 100]], 85);
     keys(tr(acc).property("ADBE Scale"), [0.2, 0.6], [[100, 0], [100, 100]], 85);
     fadeIn(ph, 0.7, 0.5, [60, 0]);
-    var cap = text(c, "CAPTION", "أطلقها ولي العهد السعودي\rالأمير محمد بن سلمان", { w: "Bold", size: 60, pos: [1200, 690] });
-    revealWords(cap, 3.6, 1.0, 40);
+    linesBlock(c, "CAPTION", "أطلقها ولي العهد السعودي\rالأمير محمد بن سلمان", { w: "Bold", size: 60, pos: [1200, 690] }, 3.6);
     var yr = counter(c, "YEAR", 2021, 7.4, 1.3, { from: 2000, w: "Black", size: 300, pos: [1200, 520], rtl: false });
     fadeIn(yr, 7.2, 0.4, [0, 40]);
     accentBar(c, 1200, 580, 300, 7.6);
