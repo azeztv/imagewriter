@@ -129,7 +129,7 @@ function text(comp, name, str, o) {
     try { td.autoLeading = false; td.leading = Math.round((o.size || 60) * 1.3); } catch (e) {}
     p.setValue(td);
     P(l).setValue(o.pos);
-    P(l).expression = edgeExpr(side) + 'value+[(anchorPoint[0]-e)*scale[0]/100,0]';
+    P(l).expression = edgeExpr(side) + '[value[0]+(anchorPoint[0]-e)*scale[0]/100, value[1]]';
     if (o.shadow !== false) shadow(l, o.shadowOp || 50);
     return l;
 }
@@ -348,7 +348,7 @@ function particles(c, n, warm) {
         fill(l, "D", (warm && rnd() > 0.6) ? CFG.ORANGE : CFG.WHITE);
         l.threeDLayer = true;
         P(l).setValue([rnd() * CFG.W * 1.3 - CFG.W * 0.15, rnd() * CFG.H * 1.2 - CFG.H * 0.1, -500 + rnd() * 1500]);
-        P(l).expression = 'value+[Math.sin(time*0.4+' + i + ')*40, -time*' + (6 + rnd() * 14).toFixed(1) + ', 0]+(wiggle(0.3,20)-value)';
+        P(l).expression = 'var w=sub(wiggle(0.3,20),value);add(add(value,[Math.sin(time*0.4+' + i + ')*40, -time*' + (6 + rnd() * 14).toFixed(1) + ', 0]),w)';
         tr(l).property("ADBE Opacity").setValue(20 + rnd() * 55);
         try {
             l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2");
@@ -504,7 +504,7 @@ BUILD.S02 = function (c) {
     depthStack(c, "S02", Z);
     particles(c, CFG.PARTICLES, true);
     lightSweep(c, 1300, 700);
-    var fx = 1520, fy = 420, fw = 470, fh = 560;
+    var fx = 1520, fy = 455, fw = 450, fh = 520;   // top ≥ 187, bottom ≤ 723 (safe area)
     var frame = rectR(c, "PhotoFrame", fw + 16, fh + 16, CFG.WHITE, [fx + (fw + 16) / 2, fy]);
     var ph;
     if (PHOTO) {
@@ -558,13 +558,13 @@ function goalsScene(c, id, line, tagAnim, move, headT) {
 BUILD.S04 = function (c) {
     goalsScene(c, "S04", "الانتقال نحو\rالاقتصاد الأخضر", true, { x0: -90, x1: 40, dolly: 360, px0: -60, px1: 0 }, 3.6);
     var ln = c.layers.addShape(); ln.name = "UpTrend";
-    newGroup(ln, "Line"); path(ln, "Line", [[160, 820], [330, 740], [470, 770], [640, 610], [780, 640], [960, 430]], false);
+    newGroup(ln, "Line"); path(ln, "Line", [[400, 770], [520, 700], [630, 725], [760, 590], [870, 615], [990, 430]], false);
     stroke(ln, "Line", CFG.ORANGE, 8); trimIn(ln, "Line", 3.6, 1.6);
-    newGroup(ln, "Head"); path(ln, "Head", [[905, 440], [960, 430], [955, 486]], false); stroke(ln, "Head", CFG.ORANGE, 8);
+    newGroup(ln, "Head"); path(ln, "Head", [[935, 440], [990, 430], [985, 486]], false); stroke(ln, "Head", CFG.ORANGE, 8);
     keys(grp(ln, "Head").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity"), [5.1, 5.3], [0, 100]);
     ln.threeDLayer = true; P(ln).setValue([CFG.W / 2, CFG.H / 2, -150]);
     shadow(ln, 40);
-    hud(c, 1450, 820, -200, 3.8);
+    hud(c, 1010, 300, 0, 3.8);
 };
 
 // S05 — emissions / CO2
@@ -574,7 +574,7 @@ BUILD.S05 = function (c) {
     newGroup(orb, "Orb"); ellipse(orb, "Orb", [280, 280]); fill(orb, "Orb", CFG.GREY, 55); stroke(orb, "Orb", CFG.WHITE, 4);
     P(orb).setValue([760, 360]);
     keys(tr(orb).property("ADBE Scale"), [0.3, 0.8], [[0, 0], [100, 100]], 85);
-    P(orb).expression = 'value+[0,Math.sin(time*1.6)*8]';
+    P(orb).expression = '[value[0], value[1]+Math.sin(time*1.6)*8]';
     var co = text(c, "CO2", "CO", { w: "Black", size: 120, pos: [760, 400], rtl: false, side: "c" });
     var two = text(c, "CO2_sub", "2", { w: "Black", size: 64, pos: [842, 432], rtl: false, side: "l" });
     fadeIn(co, 0.6, 0.3); fadeIn(two, 0.7, 0.3);
@@ -583,7 +583,7 @@ BUILD.S05 = function (c) {
         newGroup(ch, "Chevron"); path(ch, "Chevron", [[-60, -30], [0, 30], [60, -30]], false); stroke(ch, "Chevron", CFG.ORANGE, 16);
         P(ch).setValue([760, 560 + i * 70]);
         tr(ch).property("ADBE Opacity").expression = 'var t=time-' + (0.9 + i * 0.15) + ';t<0?0:(50+50*Math.sin(t*5-' + i + '))';
-        P(ch).expression = 'var t=Math.max(0,time-0.9);value+[0,(t*40)%30]';
+        P(ch).expression = 'var t=Math.max(0,time-0.9);[value[0], value[1]+(t*40)%30]';
     }
 };
 
@@ -631,7 +631,7 @@ BUILD.S07 = function (c) {
     var u = text(c, "UNIT", "مليار ريال", { w: "Bold", size: 84, pos: [0, 0] });
     stickLeftOf(u, "NUM", 30);
     fadeIn(u, 7.0, 0.4);
-    hud(c, 520, 300, -250, 6.6);
+    hud(c, 620, 380, 0, 6.6);
 };
 
 // S08 — 77 programmes (cue ≈ +0.7…2.6s)
@@ -677,7 +677,7 @@ BUILD.S10 = function (c) {
     fadeIn(n, 0.6, 0.3, [0, 40]);
     var u = text(c, "UNIT", "مسحا ميدانيا", { w: "Bold", size: 84, pos: [CFG.XR, 690] });
     revealWords(u, 1.2, 0.7, 30);
-    hud(c, 600, 640, -200, 0.8);
+    hud(c, 640, 560, 0, 0.8);
 };
 
 // S11 — Riyadh, thermometer, -2.2 (cues: "انخفاض" ≈ +7.7s, "2.2 درجة" ≈ +12.2s)
@@ -723,6 +723,31 @@ BUILD.S12 = function (c) {
     keys(tr(b2).property("ADBE Scale"), [0.9, 1.5], [[0, 100], [100, 100]], 85);
 };
 
+// ── Safe-area check (channel guide) — measures every caption/graphic at the end of its scene ──
+var ZONES = [[59, 45, 253, 151, "logo"], [1571, 115, 1920, 151, "top bar"], [59, 801, 353, 907, "bottom-left box"], [0, 913, 1920, 1080, "bottom band"]];
+function checkSafe(c, id) {
+    var t = Math.max(0, c.duration - CFG.WIPE - 0.1);
+    for (var i = 1; i <= c.numLayers; i++) {
+        var l = c.layer(i);
+        if (l.threeDLayer || l.guideLayer || !l.enabled) continue;
+        if (!(l instanceof TextLayer) && !(l instanceof ShapeLayer)) continue;
+        if (/^(Dust|Wipe|Scrim|Vignette|LightSweep)/.test(l.name)) continue;
+        var r; try { r = l.sourceRectAtTime(t, false); } catch (e) { continue; }
+        if (!r || r.width <= 0) continue;
+        var pos = tr(l).property("ADBE Position").valueAtTime(t, false);
+        var anc = tr(l).property("ADBE Anchor Point").valueAtTime(t, false);
+        var sc = tr(l).property("ADBE Scale").valueAtTime(t, false);
+        var x0 = pos[0] + (r.left - anc[0]) * sc[0] / 100, y0 = pos[1] + (r.top - anc[1]) * sc[1] / 100;
+        var x1 = x0 + r.width * sc[0] / 100, y1 = y0 + r.height * sc[1] / 100;
+        var box = "[" + Math.round(x0) + "," + Math.round(y0) + " → " + Math.round(x1) + "," + Math.round(y1) + "]";
+        if (x0 < 0 || y0 < 0 || x1 > CFG.W || y1 > CFG.H) LOG.push("SAFE " + id + " / " + l.name + ": outside frame " + box);
+        for (var z = 0; z < ZONES.length; z++) {
+            var Zn = ZONES[z];
+            if (x0 < Zn[2] && x1 > Zn[0] && y0 < Zn[3] && y1 > Zn[1]) LOG.push("SAFE " + id + " / " + l.name + ": overlaps " + Zn[4] + " " + box);
+        }
+    }
+}
+
 // ── Main comp ──
 var main = newComp("GREEN_INITIATIVE_MAIN_v2", TOTAL, fRoot);
 
@@ -731,6 +756,7 @@ for (var s = 0; s < ORDER.length; s++) {
     var sc = newComp(id, sceneLen(id), fScenes);
     _seed = 7 + s * 31;
     try { BUILD[id](sc); } catch (err) { LOG.push(id + ": " + err.toString() + " (line " + err.line + ")"); }
+    try { checkSafe(sc, id); } catch (err) { LOG.push(id + " safe-check: " + err.toString()); }
     main.layers.add(sc);
     var L = main.layer(1);
     L.startTime = CFG.T[id];
