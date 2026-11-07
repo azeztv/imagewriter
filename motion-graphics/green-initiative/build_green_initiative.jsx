@@ -41,11 +41,12 @@ var CFG = {
     // Leave "" to auto-detect the installed Neue Haas Bloomberg fonts (AE 24+),
     // or type the exact PostScript names here.
     FONT: { Black: "", Bold: "", Regular: "" },
-    FONT_FAMILY_MATCH: /bloomberg/i,
+    FONT_FAMILY_MATCH: /bloomberg|neue ?haas|neuehaas/i,
     XR: 1800,                   // right edge for captions (inside safe area)
     WIPE: 0.5                   // transition length (s)
 };
 
+var LOG = [];
 var ORDER = ["S01","S02","S03","S04","S05","S06","S07","S08","S09","S10","S11","S12"];
 var ROOT = File($.fileName).parent;
 
@@ -70,8 +71,10 @@ function font(style) {
             for (var i = 0; i < all.length && !ps; i++)
                 for (var j = 0; j < all[i].length; j++) {
                     var fo = all[i][j];
-                    if (CFG.FONT_FAMILY_MATCH.test(fo.familyName) &&
-                        new RegExp("^" + style + "$", "i").test(fo.styleName)) { ps = fo.postScriptName; break; }
+                    if (!CFG.FONT_FAMILY_MATCH.test(fo.familyName + " " + fo.postScriptName)) continue;
+                    var sn = (fo.styleName || "").toLowerCase();
+                    var ok = (style === "Regular") ? /^(regular|roman|book|normal|text)$/.test(sn) : sn === style.toLowerCase();
+                    if (ok && !/italic|oblique/.test(sn)) { ps = fo.postScriptName; break; }
                 }
         } catch (e) {}
     }
@@ -109,7 +112,7 @@ function text(comp, name, str, o) {
     var td = p.value;
     try { td.resetCharStyle(); td.resetParagraphStyle(); } catch (e) {}
     td.text = str;
-    td.font = font(o.w || "Bold");
+    try { td.font = font(o.w || "Bold"); } catch (e) { LOG.push(name + ": font " + font(o.w || "Bold") + " not found"); }
     td.fontSize = o.size || 60;
     td.applyFill = true; td.fillColor = o.color || CFG.WHITE;
     td.applyStroke = false;
@@ -122,6 +125,12 @@ function text(comp, name, str, o) {
     try { td.digitSet = DigitSet.ARABIC_DIGITS; } catch (e) {}   // 0-9, never ٠-٩
     try { td.autoLeading = false; td.leading = Math.round((o.size || 60) * 1.3); } catch (e) {}
     p.setValue(td);
+    // Anchor = right edge / centre / left edge of the real text box on the baseline,
+    // so placement never depends on RTL/LTR justification quirks.
+    var side = (o.just === ParagraphJustification.CENTER_JUSTIFY) ? "c" :
+               (o.just === ParagraphJustification.LEFT_JUSTIFY) ? "l" : "r";
+    tr(l).property("ADBE Anchor Point").expression =
+        'var b=sourceRectAtTime(0,false);[' + (side === "r" ? 'b.left+b.width' : side === "c" ? 'b.left+b.width/2' : 'b.left') + ',0]';
     tr(l).property("ADBE Position").setValue(o.pos);
     if (o.shadow !== false) shadow(l, o.shadowOp || 45);
     return l;
@@ -140,18 +149,25 @@ function shadow(l, op) {
 
 // Word-by-word reveal (keeps Arabic letters joined).
 function revealWords(l, t0, dur, dy) {
-    var anims = l.property("ADBE Text Properties").property("ADBE Text Animators");
-    var a = anims.addProperty("ADBE Text Animator");
-    var props = a.property("ADBE Text Animator Properties");
-    props.addProperty("ADBE Text Opacity").setValue(0);
-    props.addProperty("ADBE Text Position 3D").setValue([0, dy === undefined ? 40 : dy, 0]);
-    try { props.addProperty("ADBE Text Blur").setValue([8, 8]); } catch (e) {}
-    var sel = a.property("ADBE Text Selectors").addProperty("ADBE Text Selector");
+    try {
+    function AN() { return l.property("ADBE Text Properties").property("ADBE Text Animators"); }
+    AN().addProperty("ADBE Text Animator");
+    var ai = AN().numProperties;
+    function A() { return AN().property(ai); }
+    function PR() { return A().property("ADBE Text Animator Properties"); }
+    PR().addProperty("ADBE Text Opacity");
+    PR().property("ADBE Text Opacity").setValue(0);
+    PR().addProperty("ADBE Text Position 3D");
+    PR().property("ADBE Text Position 3D").setValue([0, dy === undefined ? 40 : dy, 0]);
+    try { PR().addProperty("ADBE Text Blur"); PR().property("ADBE Text Blur").setValue([8, 8]); } catch (e) {}
+    A().property("ADBE Text Selectors").addProperty("ADBE Text Selector");
+    var sel = A().property("ADBE Text Selectors").property(1);
     var adv = sel.property("ADBE Text Range Advanced");
     try { adv.property("ADBE Text Range Type2").setValue(3); } catch (e) {}   // based on: words
     try { adv.property("ADBE Text Range Shape").setValue(2); } catch (e) {}   // ramp up
     try { adv.property("ADBE Text Levels Max Ease").setValue(60); } catch (e) {}
     keys(sel.property("ADBE Text Percent Offset"), [t0, t0 + dur], [0, 100], 70);
+    } catch (e) { LOG.push(l.name + ": reveal animator — " + e.toString()); fadeIn(l, t0, dur * 0.6); }
 }
 
 function fadeIn(l, t0, dur, from) {
@@ -165,6 +181,8 @@ function fadeIn(l, t0, dur, from) {
 }
 
 function contents(l) { return l.property("ADBE Root Vectors Group"); }
+// fresh reference to the i-th item inside the named group of a shape layer
+function item(l, groupName, i) { return contents(l).property(groupName).property("ADBE Vectors Group").property(i); }
 
 function shapeGroup(l, name) {
     var g = contents(l).addProperty("ADBE Vector Group");
@@ -285,9 +303,10 @@ function sectionTag(comp, str, y, t0, animate) {
     var name = "TAG_TXT";
     var box = comp.layers.addShape(); box.name = "TAG_BOX";
     var g = shapeGroup(box, "Box");
-    var r = g.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Rect");
-    addFill(g, CFG.ORANGE);
+    g.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Rect");
+    addFill(contents(box).property("Box"), CFG.ORANGE);
     var t = text(comp, name, str, { w: "Black", size: 50, pos: [CFG.XR - 30, y], shadow: false });
+    var r = item(box, "Box", 1);
     r.property("ADBE Vector Rect Size").expression =
         'var b=thisComp.layer("' + name + '").sourceRectAtTime(time,false);[b.width+60,b.height+34]';
     r.property("ADBE Vector Rect Position").expression =
@@ -373,10 +392,10 @@ BUILD.S01 = function (c) {
     gp.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Ellipse").property("ADBE Vector Ellipse Size").setValue([18, 18]);
     addFill(gp, CFG.ORANGE);
     var gr = shapeGroup(pin, "Ring");
-    var re = gr.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Ellipse");
-    addStroke(gr, CFG.ORANGE, 3);
-    re.property("ADBE Vector Ellipse Size").expression = 'var t=(time%1.6)/1.6;[18+70*t,18+70*t]';
-    gr.property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity").expression = '100*(1-(time%1.6)/1.6)';
+    gr.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Ellipse");
+    addStroke(contents(pin).property("Ring"), CFG.ORANGE, 3);
+    item(pin, "Ring", 1).property("ADBE Vector Ellipse Size").expression = 'var t=(time%1.6)/1.6;[18+70*t,18+70*t]';
+    contents(pin).property("Ring").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity").expression = '100*(1-(time%1.6)/1.6)';
     tr(pin).property("ADBE Position").expression = 'thisComp.layer("MAP_KSA").toComp([41.8,-13.3])';
     fadeIn(pin, 2.0, 0.3);
     // Flag (official file if provided; otherwise a placeholder)
@@ -466,8 +485,7 @@ BUILD.S04 = function (c) {
     var h = shapeGroup(ln, "Head");
     addPath(h, [[905, 440], [960, 430], [955, 486]], false);
     addStroke(h, CFG.ORANGE, 8);
-    h.property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity").setValue(0);
-    keys(h.property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity"), [2.1, 2.3], [0, 100]);
+    keys(contents(ln).property("Head").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity"), [2.1, 2.3], [0, 100]);
     shadow(ln, 35);
 };
 
@@ -611,16 +629,18 @@ BUILD.S11 = function (c) {
     var rr = tube.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Rect");
     rr.property("ADBE Vector Rect Size").setValue([46, 300]); rr.property("ADBE Vector Rect Roundness").setValue(23);
     rr.property("ADBE Vector Rect Position").setValue([0, -150]);
-    addFill(tube, CFG.WHITE, 25); addStroke(tube, CFG.WHITE, 5);
-    var bulb = shapeGroup(th, "Bulb");
-    bulb.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Ellipse").property("ADBE Vector Ellipse Size").setValue([96, 96]);
-    bulb.property("ADBE Vectors Group").property(1).property("ADBE Vector Ellipse Position").setValue([0, 30]);
-    addFill(bulb, CFG.ORANGE); addStroke(bulb, CFG.WHITE, 5);
-    var merc = shapeGroup(th, "Mercury");
-    var mr = merc.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Rect");
-    mr.property("ADBE Vector Rect Roundness").setValue(10);
-    addFill(merc, CFG.ORANGE);
-    var hgt = slider(th, "Level", [1.0, 2.6], [250, 120]);
+    addFill(contents(th).property("Tube"), CFG.WHITE, 25); addStroke(contents(th).property("Tube"), CFG.WHITE, 5);
+    shapeGroup(th, "Bulb");
+    contents(th).property("Bulb").property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Ellipse");
+    item(th, "Bulb", 1).property("ADBE Vector Ellipse Size").setValue([96, 96]);
+    item(th, "Bulb", 1).property("ADBE Vector Ellipse Position").setValue([0, 30]);
+    addFill(contents(th).property("Bulb"), CFG.ORANGE); addStroke(contents(th).property("Bulb"), CFG.WHITE, 5);
+    shapeGroup(th, "Mercury"); var merc = contents(th).property("Mercury");
+    merc.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Rect");
+    item(th, "Mercury", 1).property("ADBE Vector Rect Roundness").setValue(10);
+    addFill(contents(th).property("Mercury"), CFG.ORANGE);
+    slider(th, "Level", [1.0, 2.6], [250, 120]);
+    var mr = item(th, "Mercury", 1);
     mr.property("ADBE Vector Rect Size").expression = '[20, effect("Level")(1)]';
     mr.property("ADBE Vector Rect Position").expression = '[0, -effect("Level")(1)/2]';
     for (var i = 0; i < 5; i++) {
@@ -659,7 +679,7 @@ for (var s = 0; s < ORDER.length; s++) {
     var id = ORDER[s];
     var len = sceneLen(id);
     var sc = newComp(id, len, fScenes);
-    try { BUILD[id](sc); } catch (err) { alert("Scene " + id + " error:\n" + err.toString() + "\nline " + err.line); }
+    try { BUILD[id](sc); } catch (err) { LOG.push(id + ": " + err.toString() + " (line " + err.line + ")"); }
     var L = main.layers.add(sc);
     L.startTime = CFG.T[id];
     L.name = id;
@@ -688,11 +708,13 @@ if (GUIDE) {
 }
 
 main.openInViewer();
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write(LOG.length ? LOG.join("\n") : "OK — no errors"); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
 alert("تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
-      "• عدّل توقيتات المشاهد من CFG.T في أول السكريبت لو احتاجت.");
+      "• عدّل توقيتات المشاهد من CFG.T في أول السكريبت لو احتاجت.\n" +
+      (LOG.length ? "\n⚠ " + LOG.length + " ملاحظة — التفاصيل في build_log.txt جنب السكريبت" : "\nبدون أخطاء"));
 })();
