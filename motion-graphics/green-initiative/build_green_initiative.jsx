@@ -516,6 +516,18 @@ BUILD.S01 = function (c) {
         keys(tr(c.layer("MAP_LINES")).property("ADBE Opacity"), [1.2, 2.2], [0, 100]);
         if (c.layer("MAP_MAP")) { c.layer("MAP_LINES").parent = c.layer("MAP_MAP"); P(c.layer("MAP_LINES")).setValue(tr(c.layer("MAP_MAP")).property("ADBE Anchor Point").value); tr(c.layer("MAP_LINES")).property("ADBE Scale").setValue([100, 100, 100]); }
     }
+    // climate: miniature clouds drifting over the map (scenario: background that suggests the climate)
+    var CLOUD = importIfExists("assets/cloud.png", fFoot);
+    if (CLOUD) {
+        var cl = [[520, 210, -350, 34, 0.0], [1180, 170, -150, 26, 0.4], [880, 300, -520, 22, 0.8]];
+        for (var ci = 0; ci < cl.length; ci++) {
+            c.layers.add(CLOUD); var C1 = c.layer(1); C1.name = "Cloud_" + (ci + 1); C1.threeDLayer = true;
+            tr(C1).property("ADBE Scale").setValue([cl[ci][3], cl[ci][3], 100]);
+            P(C1).setValue([cl[ci][0], cl[ci][1], cl[ci][2]]);
+            P(C1).expression = '[value[0]+time*' + (8 + ci * 4) + ', value[1]+Math.sin(time*0.7+' + ci + ')*6, value[2]]';
+            fadeIn(C1, 0.3 + cl[ci][4], 0.8);
+        }
+    }
     var pin = c.layers.addShape(); pin.name = "PIN_RIYADH";
     newGroup(pin, "Dot"); ellipse(pin, "Dot", [22, 22]); fill(pin, "Dot", CFG.ORANGE);
     newGroup(pin, "Ring"); ellipse(pin, "Ring", [22, 22]); stroke(pin, "Ring", CFG.ORANGE, 3);
@@ -604,8 +616,9 @@ BUILD.S04 = function (c) {
     goalsScene(c, "S04", "الانتقال نحو\rالاقتصاد الأخضر", true, { x0: -90, x1: 40, dolly: 360, px0: -60, px1: 0 }, 3.6);
     var ln = c.layers.addShape(); ln.name = "UpTrend";
     newGroup(ln, "Line"); path(ln, "Line", [[400, 770], [520, 700], [630, 725], [760, 590], [870, 615], [990, 430]], false);
-    stroke(ln, "Line", CFG.ORANGE, 8); trimIn(ln, "Line", 3.6, 1.6);
-    newGroup(ln, "Head"); path(ln, "Head", [[935, 440], [990, 430], [985, 486]], false); stroke(ln, "Head", CFG.ORANGE, 8);
+    var GREEN = [0.25, 0.85, 0.42];   // scenario: green rising arrows
+    stroke(ln, "Line", GREEN, 8); trimIn(ln, "Line", 3.6, 1.6);
+    newGroup(ln, "Head"); path(ln, "Head", [[935, 440], [990, 430], [985, 486]], false); stroke(ln, "Head", GREEN, 8);
     keys(grp(ln, "Head").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity"), [5.1, 5.3], [0, 100]);
     ln.threeDLayer = true; P(ln).setValue([CFG.W / 2, CFG.H / 2, -150]);
     shadow(ln, 40);
@@ -832,10 +845,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-F  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-G  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-F — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-G — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
