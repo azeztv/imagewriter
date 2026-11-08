@@ -41,3 +41,28 @@ Subject colours (e.g. green trees) stay only inside the imagery.
 ## Captions
 - On-screen text (call-ups) must match the script word for word: no additions, no omissions.
 - Full creative freedom in the visual execution.
+
+---
+
+## Production lessons (from the Green Initiative job) — apply to every new project
+
+### Workflow
+- Read the script fully; on-screen text (call-ups) word for word — no additions, no omissions. Creative freedom only in the visual execution.
+- Get the VO first and transcribe it (Whisper) to time every scene and every number to the spoken word.
+- Show a styleframe board before building; agree on ONE style reference and keep colour, light (direction + time of day) and materials identical across all shots.
+- Discuss before executing when the client asks for it; confirm decisions in one list.
+- Ask for `build_log.txt` + a screenshot (or the render) whenever something looks wrong — don't guess.
+
+### After Effects scripting (AE 2026)
+- Expressions run on the JavaScript engine: never `array + array` — write each axis (`[value[0]+x, value[1]]`) or use `add()/sub()`.
+- Re-fetch properties after every `addProperty()` (old references become invalid).
+- Use correct matchNames (`ADBE Rotate Z`, not `ADBE Rotation`); one bad call aborts the whole scene — wrap risky calls in try/catch and log to `build_log.txt`.
+- Arabic text placement: anchor point via expression `sourceRectAtTime()` at render time (right edge for RTL captions); do NOT rely on build-time measuring or paragraph justification.
+- Stamp every build (`BUILD yyyy-mm-dd-X`) in the alert and the log so the right file is confirmed.
+
+### Look
+- One caption system for all scenes: right-hand block inside the safe area; tag 50 Black on orange, headlines 80 Black, labels 58 Bold, primary number 180 Black orange, secondary 140 white, units 70 Bold left of the number.
+- Effects only where the scene needs them (rain where it rains, smoke where there is smoke…); avoid decorative clutter (god rays, bokeh blobs, HUD rings were rejected).
+- Smoke/heat displacement must be masked so solid objects never warp.
+- Maps must use real borders (Natural Earth) — never AI-drawn borders; no flight-path arcs unless asked.
+- Currency/landmarks must be accurate or neutral (no US dollars for riyal figures).
