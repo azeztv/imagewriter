@@ -379,6 +379,7 @@ function depthStack(c, id, Z) {
         keys(tr(lo).property("ADBE Opacity"), [CFG.SKETCH_T0 + 1.6, CFG.SKETCH_T0 + 2.4], [0, 100], 50);
     }
     if (c.layer("DEPTH_L2")) sketchToModel(c, id, Z, c.layer("DEPTH_L2"), CFG.SKETCH_T0);
+    if (id !== "S01" && id !== "S12") vignette(c, 26);          // soft cinematic vignette (title shots have their own)
     return out;
 }
 
@@ -845,6 +846,7 @@ function achievementsScene(c, id, tagAnim, move, origin, dur, expand) {
     var Z = camera(c, move);
     var land = spreadComp(id, origin, 0.3, dur, expand, c.duration);
     if (land) { c.layers.add(land); var L = c.layer(1); L.name = "LAND"; at3D(L, land, Z, 1200, 1.2); L.moveToEnd(); }
+    vignette(c, 26);
     particles(c, CFG.PARTICLES, false);
     scrimRight(c, 72);
     sectionTag(c, "الإنجازات:", CFG.Y.TAG, 0.25, tagAnim);
@@ -1049,10 +1051,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-L  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-M  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-L — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-M — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
