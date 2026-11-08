@@ -44,13 +44,16 @@ var CFG = {
     // Measured on AE 2026 screenshots: text renders shifted RIGHT by half its own width compared with
     // what sourceRectAtTime() reports at build time. The builder compensates by this fraction of the width.
     // If text ever sits too far LEFT on another AE version, set this to 0.
-    TEXT_SHIFT: 0.5,          // captions right edge (safe area)
+    TEXT_SHIFT: 0.5,
+    SKETCH_T0: 0.15,
+    // section changes get the orange wipe; cuts inside a section are whip-pans across the table
+    SECTION_CUTS: { S04: 1, S07: 1, S09: 1, S11: 1, S12: 1 },          // captions right edge (safe area)
     WIPE: 0.5,
     DEPTH: [1800, 900, 300],   // z of far / mid / near layers
     PARTICLES: 28
 };
 
-var LOG = [], DIAG = [];
+var LOG = [], DIAG = [], SFXQ = [], SFX_ALL = [], CUR = "S01";
 var ORDER = ["S01","S02","S03","S04","S05","S06","S07","S08","S09","S10","S11","S12"];
 var ROOT = File($.fileName).parent;
 
@@ -252,6 +255,7 @@ function slider(l, name, times, values) {
 function counter(comp, name, target, t0, dur, o) {
     var l = text(comp, name, String(target), o);
     slider(l, "Count", [t0, t0 + dur], [o.from || 0, target]);
+    SFXQ.push({ f: "counter_roll.wav", t: t0, db: -15 });
     var dec = o.decimals || 0;
     l.property("ADBE Text Properties").property("ADBE Text Document").expression =
         'var v=effect("Count")(1).value;' + (dec ? '(Math.abs(v)<0.05?0:v).toFixed(' + dec + ');' : 'Math.round(v).toString();');
@@ -379,7 +383,43 @@ function depthStack(c, id, Z) {
     }
     for (var j = out.length - 1; j >= 0; j--) out[j].moveToEnd(); // far ends at the bottom
     if (!out.length) { var ph = solid(c, CFG.GREY, id + " (MISSING LAYERS)"); ph.moveToEnd(); }
+    // clean paper first; the original plate (with the model's real contact shadow) fades in as it lands
+    var orig = importIfExists("layers/" + id + "_L0o.jpg", fFoot);
+    if (orig && c.layer("DEPTH_L0")) {
+        c.layers.add(orig); var lo = c.layer(1); lo.name = "DEPTH_L0_SHADOW";
+        at3D(lo, orig, Z, CFG.DEPTH[0] - 1, 1.18);
+        lo.moveBefore(c.layer("DEPTH_L0"));
+        keys(tr(lo).property("ADBE Opacity"), [CFG.SKETCH_T0 + 1.6, CFG.SKETCH_T0 + 2.4], [0, 100], 50);
+    }
+    if (c.layer("DEPTH_L2")) sketchToModel(c, id, Z, c.layer("DEPTH_L2"), CFG.SKETCH_T0);
     return out;
+}
+
+// "From plans on paper": a pencil drawing of the model draws itself on the paper (right → left),
+// then the real model rises out of it (bottom → top); the drawing stays faintly underneath.
+function sketchToModel(c, id, Z, model, t0) {
+    var it = importIfExists("layers/" + id + "_sketch.png", fFoot); if (!it) return;
+    c.layers.add(it); var sk = c.layer(1); sk.name = "SKETCH";
+    at3D(sk, it, Z, CFG.DEPTH[2] + 2, 1.18);
+    sk.moveAfter(model);
+    var W = it.width, H = it.height;
+    var si = addMask(sk, [[W, 0], [W, 0], [W, H], [W, H]]);
+    var sp = mask(sk, si).property("ADBE Mask Shape");
+    sp.setValueAtTime(t0, pathShape([[W, -50], [W + 1, -50], [W + 1, H + 50], [W, H + 50]], true));
+    sp.setValueAtTime(t0 + 0.9, pathShape([[-50, -50], [W + 1, -50], [W + 1, H + 50], [-50, H + 50]], true));
+    easeKeys(sp, 60);
+    mask(sk, si).property("ADBE Mask Feather").setValue([160, 0]);
+    keys(tr(sk).property("ADBE Opacity"), [t0 + 1.7, t0 + 2.4], [100, 28], 50);
+    var mi = addMask(model, [[0, H], [W, H], [W, H], [0, H]]);
+    var mp = mask(model, mi).property("ADBE Mask Shape");
+    mp.setValueAtTime(t0 + 0.8, pathShape([[-50, H + 60], [W + 50, H + 60], [W + 50, H + 61], [-50, H + 61]], true));
+    mp.setValueAtTime(t0 + 1.8, pathShape([[-50, -60], [W + 50, -60], [W + 50, H + 61], [-50, H + 61]], true));
+    easeKeys(mp, 70);
+    mask(model, mi).property("ADBE Mask Feather").setValue([0, 180]);
+    var v = P(model).value;
+    keys(P(model), [t0 + 0.8, t0 + 1.9], [[v[0], v[1], v[2] + 60], v], 80);   // rises toward the lens
+    SFXQ.push({ f: "pencil.wav", t: t0, db: -16 });
+    SFXQ.push({ f: "rise.wav", t: t0 + 0.8, db: -14 });
 }
 
 var _seed = 7;
@@ -596,18 +636,18 @@ BUILD.S01 = function (c) {
     }
     if (c.layer("MAP_GLOW")) {
         c.layer("MAP_GLOW").blendingMode = BlendingMode.ADD;
-        keys(tr(c.layer("MAP_GLOW")).property("ADBE Opacity"), [0.6, 1.4], [0, 100]);
+        keys(tr(c.layer("MAP_GLOW")).property("ADBE Opacity"), [1.8, 2.6], [0, 100]);
     }
     if (c.layer("MAP_MAP")) {
         var mm = c.layer("MAP_MAP"), sv = tr(mm).property("ADBE Scale").value;
-        keys(tr(mm).property("ADBE Opacity"), [0.1, 0.7], [0, 100]);
-        keys(P(mm), [0.1, 1.2], [[CFG.W / 2, CFG.H / 2 + 60, CFG.DEPTH[2]], [CFG.W / 2, CFG.H / 2, CFG.DEPTH[2]]], 85);
+
         c.layer("MAP_GLOW").parent = mm; P(c.layer("MAP_GLOW")).setValue(tr(mm).property("ADBE Anchor Point").value);
         tr(c.layer("MAP_GLOW")).property("ADBE Scale").setValue([100, 100, 100]);
     }
+    if (c.layer("MAP_MAP")) sketchToModel(c, "S01", Z, c.layer("MAP_MAP"), CFG.SKETCH_T0);
     if (c.layer("MAP_LINES")) {
         c.layer("MAP_LINES").blendingMode = BlendingMode.ADD;
-        keys(tr(c.layer("MAP_LINES")).property("ADBE Opacity"), [1.2, 2.2], [0, 100]);
+        keys(tr(c.layer("MAP_LINES")).property("ADBE Opacity"), [2.0, 2.8], [0, 100]);
         if (c.layer("MAP_MAP")) { c.layer("MAP_LINES").parent = c.layer("MAP_MAP"); P(c.layer("MAP_LINES")).setValue(tr(c.layer("MAP_MAP")).property("ADBE Anchor Point").value); tr(c.layer("MAP_LINES")).property("ADBE Scale").setValue([100, 100, 100]); }
     }
     // climate: miniature clouds drifting over the map (scenario: background that suggests the climate)
@@ -629,7 +669,7 @@ BUILD.S01 = function (c) {
     grp(pin, "Ring").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity").expression = '100*(1-(time%1.6)/1.6)';
     pin.threeDLayer = true;
     if (c.layer("MAP_MAP")) { pin.parent = c.layer("MAP_MAP"); P(pin).setValue([1011.5, 421.6, -2]); }
-    fadeIn(pin, 1.8, 0.3);
+    fadeIn(pin, 2.4, 0.3);
     var flag;
     if (FLAG) { flag = c.layers.add(FLAG); var fs = 340 / FLAG.width * 100; tr(flag).property("ADBE Scale").setValue([fs, fs]); }
     else flag = c.layers.addSolid([0, 108 / 255, 53 / 255], "FLAG_PLACEHOLDER — assets/saudi_flag.png", 340, 227, 1);
@@ -644,6 +684,7 @@ BUILD.S01 = function (c) {
     P(flag).setValue([1290, 400, -260]);
     shadow(flag, 45);
     fadeIn(flag, 1.0, 0.6, [80, 0]);
+    SFXQ.push({ f: "impact_soft.wav", t: 1.6, db: -11 });
     var title = text(c, "TITLE", "مبادرة السعودية الخضراء", { w: "Black", size: 110, pos: [CFG.W / 2, 775], side: "c" });
     revealWords(title, 1.6, 1.0, 60);
     var bar = rectR(c, "TitleBar", 220, 8, CFG.ORANGE, [CFG.W / 2 + 110, 655]);
@@ -656,6 +697,7 @@ BUILD.S02 = function (c) {
     depthStack(c, "S02", Z);
     particles(c, CFG.PARTICLES, true, 26);
     sandWind(c, 150, 420, 1050, 680, 22);
+    SFXQ.push({ f: "wind.wav", t: 0, db: -24, len: c.duration, fade: 1.0 });
     godRays(c, 120, -120, 11);
     lightSweep(c, 1300, 700);
     var fx = 1520, fy = 455, fw = 450, fh = 520;   // top ≥ 187, bottom ≤ 723 (safe area)
@@ -696,6 +738,8 @@ BUILD.S03 = function (c) {
         mask(c.layer("Rain"), ri).property("ADBE Mask Feather").setValue([60, 60]);
     } catch (e) { LOG.push("S03 rain: " + e.toString()); }
     // lightning: two quick soft flashes
+    SFXQ.push({ f: "rain.wav", t: 0, db: -17, len: c.duration, fade: 0.6 });
+    SFXQ.push({ f: "thunder.wav", t: 1.15, db: -13 }); SFXQ.push({ f: "thunder.wav", t: 3.65, db: -16 });
     var fl = solid(c, [0.85, 0.9, 1], "Lightning"); fl.blendingMode = BlendingMode.ADD;
     keys(tr(fl).property("ADBE Opacity"), [1.10, 1.14, 1.22, 1.26, 1.36, 3.60, 3.64, 3.78], [0, 22, 4, 16, 0, 0, 18, 0], 10);
     particles(c, Math.round(CFG.PARTICLES * 0.5), false, 30);
@@ -738,8 +782,10 @@ BUILD.S05 = function (c) {
         var smoke = fac.duplicate(); smoke.name = "SMOKE";
         var si = addMask(smoke, [[0, 0], [2400, 0], [2400, 430], [0, 430]]);
         mask(smoke, si).property("ADBE Mask Feather").setValue([90, 90]);
+        try { mask(smoke, si).maskMode = MaskMode.INTERSECT; } catch (e) {}
         var fi = addMask(fac, [[0, 0], [2400, 0], [2400, 430], [0, 430]]);
-        mask(fac, fi).inverted = true; mask(fac, fi).property("ADBE Mask Feather").setValue([90, 90]);
+        try { mask(fac, fi).maskMode = MaskMode.SUBTRACT; } catch (e) { mask(fac, fi).inverted = true; }
+        mask(fac, fi).property("ADBE Mask Feather").setValue([90, 90]);
         turbulence(smoke, 28, 40, 70, c.duration);
         keys(tr(smoke).property("ADBE Opacity"), [0.8, c.duration], [100, 45], 40);      // smoke thins out
         P(smoke).expression = '[value[0]+time*6, value[1]-time*4, value[2]]';
@@ -764,6 +810,7 @@ BUILD.S05 = function (c) {
 // S06 — afforestation: real 3D trees appearing one after another
 BUILD.S06 = function (c) {
     sandWind(c, 0, 250, 1350, 650, 26);
+    SFXQ.push({ f: "wind.wav", t: 0, db: -24, len: c.duration, fade: 0.8 });
     var Z = goalsScene(c, "S06", "التوسع في التشجير\rوحماية البيئة", false, { x0: -120, x1: 60, dolly: 420, px0: -80, px1: 0 });
     // trees stand on the sand tile: [x, y] on the 1920-wide plate, on-screen scale (%)
     var spots = [[300, 240, 9], [520, 225, 8], [740, 215, 8], [940, 205, 7], [1060, 200, 6],
@@ -779,7 +826,7 @@ BUILD.S06 = function (c) {
         var s = spots[i][2] * k2 * mg * (i % 3 === 0 ? 1.0 : 0.9);
         tr(t).property("ADBE Anchor Point").setValue([it.width / 2, it.height * 0.93, 0]);
         P(t).setValue([CFG.W / 2 + (spots[i][0] - CFG.W / 2) * mg * k2, CFG.H / 2 + (spots[i][1] - CFG.H / 2) * mg * k2, z - 1 - i * 0.1]);
-        var t0 = 0.4 + i * 0.3;
+        var t0 = 1.9 + i * 0.18;
         keys(tr(t).property("ADBE Scale"), [t0, t0 + 0.35, t0 + 0.55], [[0, 0, 100], [s * 1.08, s * 1.08, 100], [s, s, 100]], 70);
         var under = c.layer("DEPTH_L2") || c.layer("DEPTH_L1") || c.layer("DEPTH_L0");
         if (under) t.moveBefore(under);
@@ -905,6 +952,8 @@ BUILD.S12 = function (c) {
     depthStack(c, "S12", Z);
     particles(c, CFG.PARTICLES, true, 14);
     sandWind(c, 350, 420, 1500, 700, 14);
+    SFXQ.push({ f: "wind.wav", t: 0, db: -26, len: c.duration, fade: 1.5 });
+    SFXQ.push({ f: "impact_soft.wav", t: 0.8, db: -11 });
     godRays(c, 120, -120, 15);
     lightSweep(c, 1400, 900);
     vignette(c, 60);
@@ -945,12 +994,15 @@ function checkSafe(c, id) {
 
 // ── Main comp ──
 var main = newComp("GREEN_INITIATIVE_MAIN_v2", TOTAL, fRoot);
+try { main.motionBlur = true; } catch (e) {}
 
 for (var s = 0; s < ORDER.length; s++) {
     var id = ORDER[s];
     var sc = newComp(id, sceneLen(id), fScenes);
     _seed = 7 + s * 31;
+    SFXQ = [];
     try { BUILD[id](sc); } catch (err) { LOG.push(id + ": " + err.toString() + " (line " + err.line + ")"); }
+    for (var qq = 0; qq < SFXQ.length; qq++) { SFXQ[qq].t += CFG.T[id]; if (SFXQ[qq].len) SFXQ[qq].len = Math.min(SFXQ[qq].len, sceneLen(id)); SFX_ALL.push(SFXQ[qq]); }
     try { checkSafe(sc, id); } catch (err) { LOG.push(id + " safe-check: " + err.toString()); }
     for (var mb = 1; mb <= sc.numLayers; mb++) {
         var ml = sc.layer(mb);
@@ -961,7 +1013,16 @@ for (var s = 0; s < ORDER.length; s++) {
     var L = main.layer(1);
     L.startTime = CFG.T[id];
     L.name = id;
-    if (s > 0) {
+    try { L.motionBlur = true; } catch (e) {}
+    if (s > 0 && !CFG.SECTION_CUTS[id]) {
+        // whip-pan across the table: previous shot slides out to the right, new one slides in from the left
+        var w0 = CFG.T[id], w1 = w0 + 0.45, prev = main.layer(ORDER[s - 1]);
+        keys(P(L), [w0, w1], [[CFG.W / 2 - CFG.W * 1.05, CFG.H / 2], [CFG.W / 2, CFG.H / 2]], 85);
+        if (prev) keys(P(prev), [w0 - 0.02, w1 - 0.05], [[CFG.W / 2, CFG.H / 2], [CFG.W / 2 + CFG.W * 1.05, CFG.H / 2]], 85);
+        SFX_ALL.push({ f: "swish.wav", t: w0 - 0.12, db: -11 });
+    }
+    if (s > 0 && CFG.SECTION_CUTS[id]) {
+        SFX_ALL.push({ f: "whoosh.wav", t: CFG.T[id] - 0.2, db: -9 });
         var t0 = CFG.T[id], t1 = t0 + CFG.WIPE;
         var mi = addMask(L, [[CFG.W, -10], [CFG.W + 10, -10], [CFG.W + 10, CFG.H + 10], [CFG.W, CFG.H + 10]]);
         var mp = mask(main.layer(id), mi).property("ADBE Mask Shape");
@@ -978,6 +1039,40 @@ for (var s = 0; s < ORDER.length; s++) {
     try { main.markerProperty.setValueAtTime(CFG.T[id], new MarkerValue(id)); } catch (e) {}
 }
 
+// warm grade that slowly builds over the story (light travels from neutral to golden)
+var grade = main.layers.addSolid([1, 0.78, 0.5], "WarmGrade (story light)", CFG.W, CFG.H, 1);
+grade.blendingMode = BlendingMode.SOFT_LIGHT;
+keys(tr(grade).property("ADBE Opacity"), [0, TOTAL * 0.55, TOTAL], [0, 10, 18], 30);
+
+// ── sound design (generated SFX in audio/sfx) + optional music bed ──
+var fSfx = proj.items.addFolder("SFX"); fSfx.parentFolder = fRoot;
+var SFXI = {};
+function setDb(l, t, db) { try { l.property("ADBE Audio Group").property("ADBE Audio Levels").setValueAtTime(t, [db, db]); } catch (e) {} }
+for (var q = 0; q < SFX_ALL.length; q++) {
+    var e = SFX_ALL[q];
+    if (!SFXI[e.f]) SFXI[e.f] = importIfExists("audio/sfx/" + e.f, fSfx);
+    var it = SFXI[e.f]; if (!it) continue;
+    var parts = e.len ? Math.ceil(e.len / (it.duration - 0.5)) : 1;
+    for (var pp = 0; pp < parts; pp++) {
+        main.layers.add(it); var al = main.layer(1); al.name = "SFX " + e.f;
+        var st = Math.max(0, e.t + pp * (it.duration - 0.5));
+        al.startTime = st;
+        if (e.len) {
+            var end = Math.min(e.t + e.len, st + it.duration); al.outPoint = end;
+            var fd = e.fade || 0.5;
+            if (pp === 0) { setDb(al, st, -60); setDb(al, st + fd, e.db); } else { setDb(al, st, e.db); }
+            if (end >= e.t + e.len - 0.01) { setDb(al, end - fd, e.db); setDb(al, end, -60); }
+        } else {
+            try { al.property("ADBE Audio Group").property("ADBE Audio Levels").setValue([e.db, e.db]); } catch (e2) {}
+        }
+    }
+}
+var MUSIC = importIfExists("audio/music.mp3", fFoot) || importIfExists("audio/music.wav", fFoot);
+if (MUSIC) {
+    main.layers.add(MUSIC); var ml2 = main.layer(1); ml2.name = "MUSIC BED";
+    setDb(ml2, 0, -60); setDb(ml2, 1.5, -20); setDb(ml2, TOTAL - 2.5, -20); setDb(ml2, TOTAL, -60);
+} else LOG.push("No music bed: put audio/music.mp3 (or .wav) and re-run to add it at -20 dB.");
+
 if (vo) { main.layers.add(vo); main.layer(1).name = "VO"; }
 if (GUIDE) {
     main.layers.add(GUIDE); var gl = main.layer(1); gl.name = "SAFE AREA GUIDE (does not render)";
@@ -985,10 +1080,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-H  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-I  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-H — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-I — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
