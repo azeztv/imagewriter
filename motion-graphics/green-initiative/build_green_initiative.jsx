@@ -44,8 +44,11 @@ var CFG = {
     // Measured on AE 2026 screenshots: text renders shifted RIGHT by half its own width compared with
     // what sourceRectAtTime() reports at build time. The builder compensates by this fraction of the width.
     // If text ever sits too far LEFT on another AE version, set this to 0.
-    TEXT_SHIFT: 0.5,
+    TEXT_SHIFT: 0,
     SKETCH_T0: 0.15,
+    // one caption system for every scene: sizes (px) and baselines (y) of the right-hand block
+    TY: { TAG: 50, HEAD: 80, LABEL: 58, NUM: 180, NUM2: 140, UNIT: 70, UNIT2: 60, TITLE: 116 },
+    Y:  { TAG: 300, HEAD: 430, LABEL: 425, NUM: 615, LABEL2: 715, NUM2: 860 },
     // section changes get the orange wipe; cuts inside a section are whip-pans across the table
     SECTION_CUTS: { S04: 1, S07: 1, S09: 1, S11: 1, S12: 1 },          // captions right edge (safe area)
     WIPE: 0.5,
@@ -116,46 +119,44 @@ function edgeExpr(side) {
 }
 
 // Text layer. rtl=false for stand-alone numbers (keeps "-2.2" correct).
+// Every caption is a PARAGRAPH (box) text layer of fixed width. Its box edge is placed exactly
+// (right edge for side "r", centre for "c", left edge for "l") and AE aligns the words inside the
+// box, so nothing depends on measuring glyphs. pos = [edge x, first-line baseline y].
+var BOXES = {};
 function text(comp, name, str, o) {
-    var l = comp.layers.addText(str);
+    var size = o.size || 60, side = o.side || "r", lines = str.split("\r").length;
+    var BW = o.boxW || (side === "c" ? 1700 : 860), lead = Math.round(size * 1.28);
+    var BH = Math.round(lead * lines + size * 1.1);
+    var l = comp.layers.addBoxText([BW, BH], str);
     l.name = name;
     var p = l.property("ADBE Text Properties").property("ADBE Text Document");
     var td = p.value;
     try { td.resetCharStyle(); td.resetParagraphStyle(); } catch (e) {}
     td.text = str;
     try { td.font = font(o.w || "Bold"); } catch (e) { LOG.push(name + ": font " + font(o.w || "Bold") + " not found"); }
-    td.fontSize = o.size || 60;
+    td.fontSize = size;
     td.applyFill = true; td.fillColor = o.color || CFG.WHITE;
     td.applyStroke = false;
-    var side = o.side || "r";
-    // AE 2026 renders these layers centred whatever justification is asked for, so every layer is
-    // centred on purpose and its position is computed from its measured width (see placeX).
-    td.justification = ParagraphJustification.CENTER_JUSTIFY;
+    td.justification = side === "c" ? ParagraphJustification.CENTER_JUSTIFY :
+                       side === "l" ? ParagraphJustification.LEFT_JUSTIFY : ParagraphJustification.RIGHT_JUSTIFY;
     try { td.composerEngine = ComposerEngine.UNIVERSAL_TYPE_ENGINE; } catch (e) {}
     try { td.direction = (o.rtl === false) ? ParagraphDirection.DIRECTION_LEFT_TO_RIGHT : ParagraphDirection.DIRECTION_RIGHT_TO_LEFT; } catch (e) {}
     try { td.digitSet = DigitSet.ARABIC_DIGITS; } catch (e) {}   // 0-9, never ٠-٩
-    try { td.autoLeading = false; td.leading = Math.round((o.size || 60) * 1.3); } catch (e) {}
+    try { td.autoLeading = false; td.leading = lead; } catch (e) {}
     p.setValue(td);
-    placeX(l, side, o.pos, 0);   // no expressions: measured now, at build time
+    var bx = { left: 0, top: 0 };
+    try { var rb = l.sourceRectAtTime(0, true); bx.left = rb.left; bx.top = rb.top; } catch (e) {}   // the paragraph box itself
+    tr(l).property("ADBE Anchor Point").setValue([bx.left, bx.top]);                                // anchor = box top-left
+    var left = side === "r" ? o.pos[0] - BW : side === "c" ? o.pos[0] - BW / 2 : o.pos[0];
+    var top = o.pos[1] - size * 0.92;
+    P(l).setValue([left, top]);
+    BOXES[name] = { left: left, top: top, BW: BW, size: size, side: side };
     try {
         var tdc = p.value, r0 = l.sourceRectAtTime(0, false);
-        var dir = "?"; try { dir = String(tdc.direction); } catch (e) {}
-        DIAG.push(comp.name + " / " + name + " | just=" + String(tdc.justification) + " dir=" + dir +
-                  " font=" + tdc.font + " | rect.left=" + Math.round(r0.left) + " w=" + Math.round(r0.width) +
-                  " | anchorX=" + Math.round(tr(l).property("ADBE Anchor Point").value[0]) + " posX=" + Math.round(o.pos[0]));
+        DIAG.push(comp.name + " / " + name + " | box " + Math.round(left) + "→" + Math.round(left + BW) + " | glyphs left=" + Math.round(r0.left - bx.left) + " w=" + Math.round(r0.width) + " | font=" + tdc.font);
     } catch (e) {}
     if (o.shadow !== false) shadow(l, o.shadowOp || 50);
     return l;
-}
-
-// Put the layer's anchor on the chosen edge of its real text box (measured at time t).
-// Anchor on the centre of the measured text box; position so that the requested edge
-// (r = right edge, c = centre, l = left edge) lands exactly on pos[0].
-function placeX(l, side, pos, t) {
-    var r = l.sourceRectAtTime(t, false);
-    tr(l).property("ADBE Anchor Point").setValue([r.left + r.width / 2, 0]);
-    var x = pos[0] + (side === "r" ? -r.width / 2 : side === "l" ? r.width / 2 : 0) - CFG.TEXT_SHIFT * r.width;
-    P(l).setValue([x, pos[1]]);
 }
 
 function shadow(l, op) {
@@ -259,21 +260,21 @@ function counter(comp, name, target, t0, dur, o) {
     var dec = o.decimals || 0;
     l.property("ADBE Text Properties").property("ADBE Text Document").expression =
         'var v=effect("Count")(1).value;' + (dec ? '(Math.abs(v)<0.05?0:v).toFixed(' + dec + ');' : 'Math.round(v).toString();');
-    try { placeX(l, o.side || "r", o.pos, t0 + dur + 0.04); } catch (e) { LOG.push(name + ": align " + e.toString()); }
     return l;
 }
 
-// RTL unit word placed immediately to the LEFT of a number layer (same baseline).
-function stickLeftOf(l, refName, gap) {
+// RTL unit word placed immediately to the LEFT of a number (same baseline).
+// The number box is right-aligned, so its right edge is known; only its width is measured.
+function stickLeftOf(l, refName, gap, unitName) {
     var c = l.containingComp, r = c.layer(refName), te = c.duration - 0.04;
-    var rb = r.sourceRectAtTime(te, false);
-    var ra = tr(r).property("ADBE Anchor Point").value;
-    var rp = P(r).valueAtTime(te, false);
-    var rs = tr(r).property("ADBE Scale").value[0] / 100;
-    var ru = l.sourceRectAtTime(0, false);
-    var leftOfRef = rp[0] + (rb.left - ra[0] + CFG.TEXT_SHIFT * rb.width) * rs;   // rendered left edge of the number
-    tr(l).property("ADBE Anchor Point").setValue([ru.left + ru.width / 2, 0]);
-    P(l).setValue([leftOfRef - gap - ru.width / 2 - CFG.TEXT_SHIFT * ru.width, rp[1]]);
+    var rb = BOXES[refName], ub = BOXES[unitName || l.name];
+    var w = r.sourceRectAtTime(te, false).width;
+    var numberLeft = rb.left + rb.BW - w;
+    var baseline = rb.top + rb.size * 0.92;
+    var left = numberLeft - gap - ub.BW;                          // unit box is right-aligned too
+    P(l).setValue([left, baseline - ub.size * 0.92]);
+    ub.left = left; ub.top = baseline - ub.size * 0.92;
+    return numberLeft - gap;                                       // x where the unit's text ends on the left side… (its right edge)
 }
 
 function solid(comp, color, name) { return comp.layers.addSolid(color, name, CFG.W, CFG.H, 1); }
@@ -304,11 +305,13 @@ function scrimRight(comp, op) {
 
 function sectionTag(comp, str, y, t0, animate) {
     var name = "TAG_TXT";
-    var t = text(comp, name, str, { w: "Black", size: 52, pos: [CFG.XR - 32, y], shadow: false });
-    var r = t.sourceRectAtTime(0, false), bw = r.width + 64, bh = r.height + 36;
+    var t = text(comp, name, str, { w: "Black", size: CFG.TY.TAG, pos: [CFG.XR - 30, y], shadow: false });
+    var r = t.sourceRectAtTime(0, false), anc = tr(t).property("ADBE Anchor Point").value;
+    var bw = r.width + 60, bh = CFG.TY.TAG * 1.5;
+    var cy = P(t).value[1] + (r.top - anc[1]) + r.height / 2;
     var box = comp.layers.addShape(); box.name = "TAG_BOX";
     newGroup(box, "Box"); rectItem(box, "Box", [bw, bh], [-bw / 2, 0]); fill(box, "Box", CFG.ORANGE);
-    P(box).setValue([CFG.XR, y + r.top + r.height / 2]);
+    P(box).setValue([CFG.XR, cy]);
     box.moveAfter(t);
     if (animate !== false) {
         keys(tr(box).property("ADBE Scale"), [t0, t0 + 0.45], [[0, 100], [100, 100]], 85);
@@ -323,18 +326,15 @@ function accentBar(comp, x, y, w, t0) {
     return l;
 }
 
-function linesBlock(comp, base, str, o, t0) {
-    var parts = str.split("\r"), out = [], lead = Math.round((o.size || 60) * 1.3);
-    for (var i = 0; i < parts.length; i++) {
-        var l = text(comp, base + (parts.length > 1 ? "_" + (i + 1) : ""), parts[i],
-            { w: o.w, size: o.size, color: o.color, side: o.side || "r", pos: [o.pos[0], o.pos[1] + i * lead] });
-        revealWords(l, t0 + i * 0.25, 0.8, 50);
-        out.push(l);
-    }
-    return out;
-}
 function headline(comp, str, y, t0, size) {
-    return linesBlock(comp, "HEADLINE", str, { w: "Black", size: size || 84, pos: [CFG.XR, y] }, t0);
+    var l = text(comp, "HEADLINE", str, { w: "Black", size: size || CFG.TY.HEAD, pos: [CFG.XR, y] });
+    revealWords(l, t0, 0.9, 50);
+    return l;
+}
+function label(comp, name, str, y, t0) {
+    var l = text(comp, name, str, { w: "Bold", size: CFG.TY.LABEL, pos: [CFG.XR, y] });
+    revealWords(l, t0, 0.6, 30);
+    return l;
 }
 
 // ── 3D ──
@@ -443,17 +443,6 @@ function particles(c, n, warm, wind) {
         try { l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); l.property("ADBE Effect Parade").property(1).property(1).setValue(1 + rnd() * 3); } catch (e) {}
         l.blendingMode = BlendingMode.ADD;
     }
-    // foreground bokeh
-    for (var j = 0; j < 5; j++) {
-        var b = c.layers.addShape(); b.name = "Bokeh_" + (j + 1);
-        newGroup(b, "B"); var bs = 60 + rnd() * 90; ellipse(b, "B", [bs, bs]); fill(b, "B", [1, 0.85, 0.65]);
-        b.threeDLayer = true;
-        P(b).setValue([rnd() * CFG.W, rnd() * CFG.H, -700 - rnd() * 300]);
-        P(b).expression = '[value[0]+time*' + (wind * 2.2).toFixed(1) + ', value[1]+Math.sin(time*0.4+' + j + ')*20, value[2]]';
-        tr(b).property("ADBE Opacity").setValue(6 + rnd() * 8);
-        try { b.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); b.property("ADBE Effect Parade").property(1).property(1).setValue(40); } catch (e) {}
-        b.blendingMode = BlendingMode.ADD;
-    }
 }
 
 // Soft volumetric god-rays from the key light (upper left), slowly breathing.
@@ -467,7 +456,7 @@ function godRays(c, ox, oy, op) {
     }
     fill(l, "Rays", [1, 0.86, 0.66]);
     P(l).setValue([ox, oy]);
-    tr(l).property("ADBE Rotation").expression = 'Math.sin(time*0.25)*3';
+    tr(l).property("ADBE Rotate Z").expression = 'Math.sin(time*0.25)*3';
     tr(l).property("ADBE Opacity").expression = (op || 14) + '*(0.75+0.25*Math.sin(time*0.6))';
     try { l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); l.property("ADBE Effect Parade").property(1).property(1).setValue(60); } catch (e) {}
     l.blendingMode = BlendingMode.ADD;
@@ -493,7 +482,7 @@ function glint(c, subjectName, t0) {
     var subj = c.layer(subjectName); if (!subj) return;
     var g = c.layers.addShape(); g.name = "Glint";
     newGroup(g, "Band"); path(g, "Band", [[-90, -900], [90, -900], [90, 900], [-90, 900]], true); fill(g, "Band", [1, 0.95, 0.85]);
-    tr(g).property("ADBE Rotation").setValue(22);
+    tr(g).property("ADBE Rotate Z").setValue(22);
     keys(P(g), [t0, t0 + 1.4], [[-300, CFG.H / 2], [CFG.W + 300, CFG.H / 2]], 55);
     tr(g).property("ADBE Opacity").setValue(55);
     try { g.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); g.property("ADBE Effect Parade").property(1).property(1).setValue(45); } catch (e) {}
@@ -624,8 +613,6 @@ BUILD.S01 = function (c) {
     var Z = camera(c, { x0: -80, x1: 60, dolly: 380, px0: -40, px1: 30 });
     depthStack(c, "S01", Z);
     particles(c, CFG.PARTICLES, true, 22);
-    godRays(c, 120, -120, 13);
-    lightSweep(c, 400, 900);
     vignette(c, 45);
     // Accurate 3D relief map (rendered from Natural Earth borders): body, orange glow, connection arcs
     var mapNames = ["S01_glow.png", "S01_map.png", "S01_lines.png"], mapL = [];
@@ -685,7 +672,7 @@ BUILD.S01 = function (c) {
     shadow(flag, 45);
     fadeIn(flag, 1.0, 0.6, [80, 0]);
     SFXQ.push({ f: "impact_soft.wav", t: 1.6, db: -11 });
-    var title = text(c, "TITLE", "مبادرة السعودية الخضراء", { w: "Black", size: 110, pos: [CFG.W / 2, 775], side: "c" });
+    var title = text(c, "TITLE", "مبادرة السعودية الخضراء", { w: "Black", size: CFG.TY.TITLE, pos: [CFG.W / 2, 780], side: "c" });
     revealWords(title, 1.6, 1.0, 60);
     var bar = rectR(c, "TitleBar", 220, 8, CFG.ORANGE, [CFG.W / 2 + 110, 655]);
     keys(tr(bar).property("ADBE Scale"), [1.5, 2.1], [[0, 100], [100, 100]], 85);
@@ -698,9 +685,7 @@ BUILD.S02 = function (c) {
     particles(c, CFG.PARTICLES, true, 26);
     sandWind(c, 150, 420, 1050, 680, 22);
     SFXQ.push({ f: "wind.wav", t: 0, db: -24, len: c.duration, fade: 1.0 });
-    godRays(c, 120, -120, 11);
-    lightSweep(c, 1300, 700);
-    var fx = 1520, fy = 455, fw = 450, fh = 520;   // top ≥ 187, bottom ≤ 723 (safe area)
+    var fx = 640, fy = 470, fw = 430, fh = 500;   // photo on the left; caption block on the right (safe area)
     var frame = rectR(c, "PhotoFrame", fw + 16, fh + 16, CFG.WHITE, [fx + (fw + 16) / 2, fy]);
     var ph;
     if (PHOTO) {
@@ -718,10 +703,11 @@ BUILD.S02 = function (c) {
     keys(tr(frame).property("ADBE Scale"), [0.3, 0.9], [[0, 100], [100, 100]], 85);
     keys(tr(acc).property("ADBE Scale"), [0.2, 0.6], [[100, 0], [100, 100]], 85);
     fadeIn(ph, 0.7, 0.5, [60, 0]);
-    linesBlock(c, "CAPTION", "أطلقها ولي العهد السعودي\rالأمير محمد بن سلمان", { w: "Bold", size: 60, pos: [1200, 690] }, 3.6);
-    var yr = counter(c, "YEAR", 2021, 7.4, 1.3, { from: 2000, w: "Black", size: 300, pos: [1200, 520], rtl: false });
+    var cap = text(c, "CAPTION", "أطلقها ولي العهد السعودي\rالأمير محمد بن سلمان", { w: "Bold", size: CFG.TY.LABEL, pos: [CFG.XR, CFG.Y.HEAD] });
+    revealWords(cap, 3.6, 1.0, 40);
+    var yr = counter(c, "YEAR", 2021, 7.4, 1.3, { from: 2000, w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM + 60], rtl: false, color: CFG.ORANGE });
     fadeIn(yr, 7.2, 0.4, [0, 40]);
-    accentBar(c, 1200, 580, 300, 7.6);
+    accentBar(c, CFG.XR, CFG.Y.TAG, 160, 0.4);
 };
 
 // S03 — climate change, rain
@@ -744,8 +730,8 @@ BUILD.S03 = function (c) {
     keys(tr(fl).property("ADBE Opacity"), [1.10, 1.14, 1.22, 1.26, 1.36, 3.60, 3.64, 3.78], [0, 22, 4, 16, 0, 0, 18, 0], 10);
     particles(c, Math.round(CFG.PARTICLES * 0.5), false, 30);
     scrimRight(c, 65);
-    accentBar(c, CFG.XR, 380, 160, 0.4);
-    headline(c, "التصدي للتغيرات\rالمناخية", 490, 0.5, 96);
+    accentBar(c, CFG.XR, CFG.Y.TAG, 160, 0.4);
+    headline(c, "التصدي للتغيرات\rالمناخية", CFG.Y.HEAD, 0.5);
 };
 
 function goalsScene(c, id, line, tagAnim, move, headT) {
@@ -753,8 +739,8 @@ function goalsScene(c, id, line, tagAnim, move, headT) {
     depthStack(c, id, Z);
     particles(c, CFG.PARTICLES, true);
     scrimRight(c, 60);
-    sectionTag(c, "الأهداف:", 330, 0.25, tagAnim);
-    headline(c, line, 470, headT === undefined ? 0.5 : headT, 86);
+    sectionTag(c, "الأهداف:", CFG.Y.TAG, 0.25, tagAnim);
+    headline(c, line, CFG.Y.HEAD, headT === undefined ? 0.5 : headT);
     return Z;
 }
 
@@ -771,7 +757,6 @@ BUILD.S04 = function (c) {
     shadow(ln, 40);
     hud(c, 1010, 300, 0, 3.8);
     glint(c, "DEPTH_L2", 3.9);
-    godRays(c, 120, -120, 10);
 };
 
 // S05 — emissions / CO2
@@ -795,8 +780,9 @@ BUILD.S05 = function (c) {
     P(orb).setValue([760, 360]);
     keys(tr(orb).property("ADBE Scale"), [0.3, 0.8], [[0, 0], [100, 100]], 85);
     P(orb).expression = '[value[0], value[1]+Math.sin(time*1.6)*8]';
-    var co = text(c, "CO2", "CO", { w: "Black", size: 120, pos: [760, 400], rtl: false, side: "c" });
-    var two = text(c, "CO2_sub", "2", { w: "Black", size: 64, pos: [842, 432], rtl: false, side: "l" });
+    var co = text(c, "CO2", "CO", { w: "Black", size: 110, pos: [745, 400], rtl: false, side: "c", boxW: 400 });
+    var wCO = co.sourceRectAtTime(0, false).width;
+    var two = text(c, "CO2_sub", "2", { w: "Black", size: 58, pos: [745 + wCO / 2 + 4, 425], rtl: false, side: "l", boxW: 100 });
     fadeIn(co, 0.6, 0.3); fadeIn(two, 0.7, 0.3);
     for (var i = 0; i < 3; i++) {
         var ch = c.layers.addShape(); ch.name = "Down_" + (i + 1);
@@ -838,21 +824,19 @@ function plansScene(c, id, tagAnim, move) {
     var Z = camera(c, move);
     depthStack(c, id, Z);
     particles(c, CFG.PARTICLES, true);
-    lightSweep(c, 300, 800);
     scrimRight(c, 55);
-    sectionTag(c, "الخطط:", 300, 0.25, tagAnim);
+    sectionTag(c, "الخطط:", CFG.Y.TAG, 0.25, tagAnim);
     return Z;
 }
 
 // S07 — 700 billion riyals (cues: "استثمارات" ≈ +4.6s, "700 مليار ريال" ≈ +6.7…8.6s)
 BUILD.S07 = function (c) {
     plansScene(c, "S07", true, { x0: -60, x1: 60, y0: 30, y1: -20, dolly: 380 });
-    var l1 = text(c, "LINE1", "استثمارات بقيمة", { w: "Bold", size: 66, pos: [CFG.XR, 430] });
-    revealWords(l1, 4.4, 0.7, 40);
-    var n = counter(c, "NUM", 700, 6.6, 1.8, { w: "Black", size: 230, pos: [CFG.XR, 650], rtl: false, color: CFG.ORANGE });
+    label(c, "LINE1", "استثمارات بقيمة", CFG.Y.LABEL, 4.4);
+    var n = counter(c, "NUM", 700, 6.6, 1.8, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 6.5, 0.3, [0, 40]);
-    var u = text(c, "UNIT", "مليار ريال", { w: "Bold", size: 84, pos: [0, 0] });
-    stickLeftOf(u, "NUM", 30);
+    var u = text(c, "UNIT", "مليار ريال", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 520 });
+    stickLeftOf(u, "NUM", 28, "UNIT");
     fadeIn(u, 7.0, 0.4);
     hud(c, 620, 380, 0, 6.6);
     glint(c, "DEPTH_L2", 6.8);
@@ -862,10 +846,10 @@ BUILD.S07 = function (c) {
 BUILD.S08 = function (c) {
     plansScene(c, "S08", false, { x0: 80, x1: -40, dolly: 340, px0: 40, px1: -20 });
     bloom(c, "DEPTH_L2", 32);
-    var n = counter(c, "NUM", 77, 0.6, 1.8, { w: "Black", size: 250, pos: [CFG.XR, 620], rtl: false, color: CFG.ORANGE });
+    var n = counter(c, "NUM", 77, 0.6, 1.8, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 0.5, 0.3, [0, 40]);
-    var u = text(c, "UNIT", "برنامجا متكاملا", { w: "Bold", size: 84, pos: [0, 0] });
-    stickLeftOf(u, "NUM", 34);
+    var u = text(c, "UNIT", "برنامجا متكاملا", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 620 });
+    stickLeftOf(u, "NUM", 28, "UNIT");
     fadeIn(u, 1.0, 0.4);
 };
 
@@ -875,33 +859,34 @@ function achievementsScene(c, id, tagAnim, move, origin, dur, expand) {
     if (land) { c.layers.add(land); var L = c.layer(1); L.name = "LAND"; at3D(L, land, Z, 1200, 1.2); L.moveToEnd(); }
     particles(c, CFG.PARTICLES, false);
     scrimRight(c, 72);
-    sectionTag(c, "الإنجازات:", 270, 0.25, tagAnim);
+    sectionTag(c, "الإنجازات:", CFG.Y.TAG, 0.25, tagAnim);
     return Z;
 }
 
 // S09 — 100 million trees (≈ +6.8s) / 118 thousand hectares (≈ +10.0s)
 BUILD.S09 = function (c) {
     achievementsScene(c, "S09", true, { x0: -60, x1: 40, y0: -40, y1: 0, dolly: 380 }, [0.12, 0.85], 11.5, 1600);
-    var a1 = text(c, "A1_WORD", "زراعة", { w: "Bold", size: 60, pos: [CFG.XR, 390] }); revealWords(a1, 6.5, 0.5, 30);
-    var n1 = counter(c, "A1_NUM", 100, 6.8, 1.6, { w: "Black", size: 170, pos: [CFG.XR, 550], rtl: false, color: CFG.ORANGE });
+    label(c, "A1_WORD", "زراعة", CFG.Y.LABEL, 6.5);
+    var n1 = counter(c, "A1_NUM", 100, 6.8, 1.6, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n1, 6.7, 0.3, [0, 30]);
-    var u1 = text(c, "A1_UNIT", "مليون شجرة", { w: "Bold", size: 70, pos: [0, 0] }); stickLeftOf(u1, "A1_NUM", 28); fadeIn(u1, 7.2, 0.4);
+    var u1 = text(c, "A1_UNIT", "مليون شجرة", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 520 }); stickLeftOf(u1, "A1_NUM", 28, "A1_UNIT"); fadeIn(u1, 7.2, 0.4);
     var tB = 9.6;
-    var sep = rectR(c, "Divider", 520, 3, CFG.WHITE, [CFG.XR, 585], 60);
+    var sep = rectR(c, "Divider", 560, 3, CFG.WHITE, [CFG.XR, CFG.Y.NUM + 45], 60);
     keys(tr(sep).property("ADBE Scale"), [tB - 0.3, tB + 0.2], [[0, 100], [100, 100]], 85);
-    var a2 = text(c, "A2_WORD", "استصلاح", { w: "Bold", size: 60, pos: [CFG.XR, 668] }); revealWords(a2, tB, 0.5, 30);
-    var n2 = counter(c, "A2_NUM", 118, tB + 0.4, 1.6, { w: "Black", size: 150, pos: [CFG.XR, 805], rtl: false });
+    label(c, "A2_WORD", "استصلاح", CFG.Y.LABEL2, tB);
+    var n2 = counter(c, "A2_NUM", 118, tB + 0.4, 1.2, { w: "Black", size: CFG.TY.NUM2, pos: [CFG.XR, CFG.Y.NUM2], rtl: false });
     fadeIn(n2, tB + 0.3, 0.3, [0, 30]);
-    var u2 = text(c, "A2_UNIT", "ألف هكتارا", { w: "Bold", size: 64, pos: [0, 0] }); stickLeftOf(u2, "A2_NUM", 28); fadeIn(u2, tB + 0.8, 0.4);
+    var u2 = text(c, "A2_UNIT", "ألف هكتارا", { w: "Bold", size: CFG.TY.UNIT2, pos: [0, 0], boxW: 480 }); stickLeftOf(u2, "A2_NUM", 26, "A2_UNIT"); fadeIn(u2, tB + 0.8, 0.4);
 };
 
 // S10 — 1150 field surveys (≈ +0.8…4.2s), bigger spread
 BUILD.S10 = function (c) {
     achievementsScene(c, "S10", false, { x0: 0, x1: 0, y0: -60, y1: 20, dolly: 520 }, [0.5, 0.45], 9.0, 2000);
-    var n = counter(c, "NUM", 1150, 0.7, 2.6, { w: "Black", size: 230, pos: [CFG.XR, 560], rtl: false, color: CFG.ORANGE });
+    var n = counter(c, "NUM", 1150, 0.7, 2.6, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 0.6, 0.3, [0, 40]);
-    var u = text(c, "UNIT", "مسحا ميدانيا", { w: "Bold", size: 84, pos: [CFG.XR, 690] });
-    revealWords(u, 1.2, 0.7, 30);
+    var u = text(c, "UNIT", "مسحا ميدانيا", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 560 });
+    stickLeftOf(u, "NUM", 28, "UNIT");
+    fadeIn(u, 1.2, 0.4);
     hud(c, 640, 560, 0, 0.8);
     for (var sc = 0; sc < 2; sc++) {
         var sl = c.layers.addShape(); sl.name = "ScanLine_" + (sc + 1);
@@ -919,13 +904,12 @@ BUILD.S11 = function (c) {
     var Z = camera(c, { x0: -100, x1: 40, dolly: 360, px0: -60, px1: 0 });
     depthStack(c, "S11", Z);
     particles(c, CFG.PARTICLES, false);
-    lightSweep(c, 500, 1000);
     scrimRight(c, 55);
-    headline(c, "انخفاض درجة حرارة\rمراكز المدن", 260, 7.6, 76);
+    accentBar(c, CFG.XR, CFG.Y.TAG, 160, 7.4);
+    headline(c, "انخفاض درجة حرارة\rمراكز المدن", CFG.Y.HEAD, 7.6);
     if (c.layer("DEPTH_L2")) turbulence(c.layer("DEPTH_L2"), 6, 0, 45, 13.6);
     if (c.layer("DEPTH_L0")) turbulence(c.layer("DEPTH_L0"), 4, 0, 45, 13.6);
     glint(c, "DEPTH_L2", 12.2);
-    godRays(c, 120, -120, 12);
     var th = c.layers.addShape(); th.name = "Thermometer";
     newGroup(th, "Tube"); rectItem(th, "Tube", [46, 300], [0, -150], 23); fill(th, "Tube", CFG.WHITE, 25); stroke(th, "Tube", CFG.WHITE, 5);
     newGroup(th, "Mercury"); rectItem(th, "Mercury", [20, 250], [0, -125], 10); fill(th, "Mercury", CFG.ORANGE);
@@ -936,13 +920,13 @@ BUILD.S11 = function (c) {
     slider(th, "Level", [11.8, 13.6], [250, 110]);
     items(th, "Mercury").property(1).property("ADBE Vector Rect Size").expression = '[20, effect("Level")(1)]';
     items(th, "Mercury").property(1).property("ADBE Vector Rect Position").expression = '[0, -effect("Level")(1)/2]';
-    P(th).setValue([1720, 700]);
+    P(th).setValue([1000, 760]);
     fadeIn(th, 7.9, 0.5, [0, 40]);
     shadow(th, 40);
-    var n = counter(c, "NUM", -2.2, 12.0, 1.6, { from: 0, decimals: 1, w: "Black", size: 210, pos: [1610, 700], rtl: false });
+    var n = counter(c, "NUM", -2.2, 12.0, 1.6, { from: 0, decimals: 1, w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM + 145], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 11.9, 0.3, [0, 30]);
-    var u = text(c, "UNIT", "درجة", { w: "Bold", size: 84, pos: [0, 0] });
-    stickLeftOf(u, "NUM", 28);
+    var u = text(c, "UNIT", "درجة", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 300 });
+    stickLeftOf(u, "NUM", 28, "UNIT");
     fadeIn(u, 12.4, 0.4);
 };
 
@@ -954,10 +938,8 @@ BUILD.S12 = function (c) {
     sandWind(c, 350, 420, 1500, 700, 14);
     SFXQ.push({ f: "wind.wav", t: 0, db: -26, len: c.duration, fade: 1.5 });
     SFXQ.push({ f: "impact_soft.wav", t: 0.8, db: -11 });
-    godRays(c, 120, -120, 15);
-    lightSweep(c, 1400, 900);
     vignette(c, 60);
-    var title = text(c, "TITLE", "مبادرة السعودية الخضراء", { w: "Black", size: 120, pos: [CFG.W / 2, 560], side: "c" });
+    var title = text(c, "TITLE", "مبادرة السعودية الخضراء", { w: "Black", size: CFG.TY.TITLE, pos: [CFG.W / 2, 560], side: "c" });
     revealWords(title, 0.8, 1.1, 60);
     var b1 = rectR(c, "BarTop", 240, 8, CFG.ORANGE, [CFG.W / 2 + 120, 410]);
     var b2 = rectR(c, "BarBottom", 240, 8, CFG.ORANGE, [CFG.W / 2 + 120, 625]);
@@ -1000,7 +982,7 @@ for (var s = 0; s < ORDER.length; s++) {
     var id = ORDER[s];
     var sc = newComp(id, sceneLen(id), fScenes);
     _seed = 7 + s * 31;
-    SFXQ = [];
+    SFXQ = []; BOXES = {};
     try { BUILD[id](sc); } catch (err) { LOG.push(id + ": " + err.toString() + " (line " + err.line + ")"); }
     for (var qq = 0; qq < SFXQ.length; qq++) { SFXQ[qq].t += CFG.T[id]; if (SFXQ[qq].len) SFXQ[qq].len = Math.min(SFXQ[qq].len, sceneLen(id)); SFX_ALL.push(SFXQ[qq]); }
     try { checkSafe(sc, id); } catch (err) { LOG.push(id + " safe-check: " + err.toString()); }
@@ -1080,10 +1062,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-I  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-J  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-I — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-J — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
