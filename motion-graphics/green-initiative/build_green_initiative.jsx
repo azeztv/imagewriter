@@ -493,25 +493,37 @@ BUILD.S01 = function (c) {
     particles(c, CFG.PARTICLES, true);
     lightSweep(c, 400, 900);
     vignette(c, 45);
-    var MAP = [[-271.4,-148.7],[-241.8,-144.1],[-230.2,-153.0],[-223.9,-163.5],[-203.6,-167.6],[-199.2,-177.3],[-190.4,-182.3],[-216.9,-211.4],[-163.6,-226.0],[-158.5,-230.4],[-126.4,-222.5],[-86.8,-202.1],[-11.7,-143.5],[37.8,-141.2],[61.5,-138.4],[68.1,-124.5],[87.0,-125.2],[97.4,-100.1],[110.5,-93.5],[115.0,-83.2],[133.2,-71.0],[134.8,-58.9],[132.2,-49.2],[135.5,-39.4],[143.2,-31.3],[146.7,-21.7],[150.7,-14.6],[158.8,-8.8],[166.1,-10.9],[171.2,0.3],[172.2,7.0],[182.4,36.5],[262.4,51.2],[267.8,45.1],[280.0,65.7],[262.3,124.0],[182.4,153.1],[105.6,164.3],[80.8,177.4],[61.7,208.0],[49.3,212.9],[42.6,203.2],[32.4,204.6],[6.7,201.7],[1.8,198.8],[-28.9,199.5],[-36.2,202.1],[-47.1,194.5],[-54.1,208.8],[-51.4,221.1],[-63.1,230.4],[-66.6,218.0],[-74.6,209.2],[-76.6,197.6],[-90.4,187.1],[-104.6,162.7],[-112.1,139.0],[-130.5,118.9],[-142.4,114.1],[-160.0,86.3],[-163.1,66.1],[-162.0,48.8],[-177.2,16.5],[-189.7,5.1],[-204.1,-0.9],[-212.8,-17.6],[-211.4,-24.2],[-218.8,-39.3],[-226.6,-45.8],[-237.0,-67.5],[-253.2,-91.0],[-266.7,-111.0],[-280.0,-110.9],[-275.9,-126.9],[-274.7,-137.1]];
-    var map = c.layers.addShape(); map.name = "MAP_KSA";
-    newGroup(map, "Fill"); path(map, "Fill", MAP, true); fill(map, "Fill", CFG.WHITE, 0);
-    keys(last(map, "Fill").property("ADBE Vector Fill Opacity"), [1.0, 2.0], [0, 24]);
-    newGroup(map, "Outline"); path(map, "Outline", MAP, true); stroke(map, "Outline", CFG.WHITE, 4); trimIn(map, "Outline", 0.2, 1.6);
-    newGroup(map, "Glow"); path(map, "Glow", MAP, true); stroke(map, "Glow", CFG.ORANGE, 2.5); trimIn(map, "Glow", 0.4, 1.6);
-    map.threeDLayer = true;
-    P(map).setValue([760, 395, -120]);
-    keys(tr(map).property("ADBE Y Rotation"), [0, c.duration], [-12, 6], 40);
-    shadow(map, 45);
+    // Accurate 3D relief map (rendered from Natural Earth borders): body, orange glow, connection arcs
+    var mapNames = ["S01_glow.png", "S01_map.png", "S01_lines.png"], mapL = [];
+    for (var mi = 0; mi < mapNames.length; mi++) {
+        var it = importIfExists("layers/" + mapNames[mi], fFoot); if (!it) { LOG.push("missing layers/" + mapNames[mi]); continue; }
+        c.layers.add(it); var L = c.layer(1); L.name = mapNames[mi].replace(".png", "").replace("S01_", "MAP_").toUpperCase();
+        at3D(L, it, Z, CFG.DEPTH[2], 1.18); mapL.push(L);
+    }
+    if (c.layer("MAP_GLOW")) {
+        c.layer("MAP_GLOW").blendingMode = BlendingMode.ADD;
+        keys(tr(c.layer("MAP_GLOW")).property("ADBE Opacity"), [0.6, 1.4], [0, 100]);
+    }
+    if (c.layer("MAP_MAP")) {
+        var mm = c.layer("MAP_MAP"), sv = tr(mm).property("ADBE Scale").value;
+        keys(tr(mm).property("ADBE Opacity"), [0.1, 0.7], [0, 100]);
+        keys(P(mm), [0.1, 1.2], [[CFG.W / 2, CFG.H / 2 + 60, CFG.DEPTH[2]], [CFG.W / 2, CFG.H / 2, CFG.DEPTH[2]]], 85);
+        c.layer("MAP_GLOW").parent = mm; P(c.layer("MAP_GLOW")).setValue(tr(mm).property("ADBE Anchor Point").value);
+        tr(c.layer("MAP_GLOW")).property("ADBE Scale").setValue([100, 100, 100]);
+    }
+    if (c.layer("MAP_LINES")) {
+        c.layer("MAP_LINES").blendingMode = BlendingMode.ADD;
+        keys(tr(c.layer("MAP_LINES")).property("ADBE Opacity"), [1.2, 2.2], [0, 100]);
+        if (c.layer("MAP_MAP")) { c.layer("MAP_LINES").parent = c.layer("MAP_MAP"); P(c.layer("MAP_LINES")).setValue(tr(c.layer("MAP_MAP")).property("ADBE Anchor Point").value); tr(c.layer("MAP_LINES")).property("ADBE Scale").setValue([100, 100, 100]); }
+    }
     var pin = c.layers.addShape(); pin.name = "PIN_RIYADH";
-    newGroup(pin, "Dot"); ellipse(pin, "Dot", [20, 20]); fill(pin, "Dot", CFG.ORANGE);
-    newGroup(pin, "Ring"); ellipse(pin, "Ring", [20, 20]); stroke(pin, "Ring", CFG.ORANGE, 3);
-    items(pin, "Ring").property(1).property("ADBE Vector Ellipse Size").expression = 'var t=(time%1.6)/1.6;[20+80*t,20+80*t]';
+    newGroup(pin, "Dot"); ellipse(pin, "Dot", [22, 22]); fill(pin, "Dot", CFG.ORANGE);
+    newGroup(pin, "Ring"); ellipse(pin, "Ring", [22, 22]); stroke(pin, "Ring", CFG.ORANGE, 3);
+    items(pin, "Ring").property(1).property("ADBE Vector Ellipse Size").expression = 'var t=(time%1.6)/1.6;[22+90*t,22+90*t]';
     grp(pin, "Ring").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity").expression = '100*(1-(time%1.6)/1.6)';
     pin.threeDLayer = true;
-    pin.parent = c.layer("MAP_KSA");
-    P(pin).setValue([41.8, -13.3, -2]);
-    fadeIn(pin, 1.6, 0.3);
+    if (c.layer("MAP_MAP")) { pin.parent = c.layer("MAP_MAP"); P(pin).setValue([1011.5, 421.6, -2]); }
+    fadeIn(pin, 1.8, 0.3);
     var flag;
     if (FLAG) { flag = c.layers.add(FLAG); var fs = 340 / FLAG.width * 100; tr(flag).property("ADBE Scale").setValue([fs, fs]); }
     else flag = c.layers.addSolid([0, 108 / 255, 53 / 255], "FLAG_PLACEHOLDER — assets/saudi_flag.png", 340, 227, 1);
@@ -623,20 +635,20 @@ BUILD.S05 = function (c) {
 // S06 — afforestation: real 3D trees appearing one after another
 BUILD.S06 = function (c) {
     var Z = goalsScene(c, "S06", "التوسع في التشجير\rوحماية البيئة", false, { x0: -120, x1: 60, dolly: 420, px0: -80, px1: 0 });
-    // [screen x, screen y (ground contact), z depth]
-    var spots = [[1060, 455, 1400], [990, 470, 1150], [905, 490, 900], [810, 515, 700], [700, 550, 500], [575, 600, 330], [430, 670, 180], [270, 760, 60], [90, 880, -60],
-                 [560, 470, 1200], [420, 485, 1000], [260, 505, 800]];
+    // trees stand on the sand tile: [x, y] on the 1920-wide plate, on-screen scale (%)
+    var spots = [[300, 240, 9], [520, 225, 8], [740, 215, 8], [940, 205, 7], [1060, 200, 6],
+                 [200, 400, 13], [430, 390, 12], [660, 375, 11], [880, 360, 10], [1060, 345, 9],
+                 [320, 590, 17], [580, 570, 16], [830, 545, 15], [1040, 520, 13]];
     var idx = []; for (var k = 0; k < spots.length; k++) idx.push(k);
-    idx.sort(function (a, b) { return spots[a][2] - spots[b][2]; }); // nearest first → ends on top
+    idx.sort(function (a, b) { return spots[b][1] - spots[a][1]; }); // nearest (lowest on screen) first → ends on top
     for (var q = 0; q < idx.length; q++) {
         var i = idx[q], it = TREES[i % 3]; if (!it) continue;
         var t = c.layers.add(it); t.name = "Tree_" + (i + 1);
         t.threeDLayer = true;
-        var z = spots[i][2];
-        var k2 = (Z + z) / Z;
-        var s = (spots[i][1] - 412) / (880 - 412) * 75 * k2;
-        tr(t).property("ADBE Anchor Point").setValue([it.width / 2, it.height - 20, 0]);
-        P(t).setValue([CFG.W / 2 + (spots[i][0] - CFG.W / 2) * k2, CFG.H / 2 + (spots[i][1] - CFG.H / 2) * k2, z]);
+        var z = CFG.DEPTH[2], k2 = (Z + z) / Z, mg = 1.18;           // same depth + margin as the tile layer
+        var s = spots[i][2] * k2 * mg * (i % 3 === 0 ? 1.0 : 0.9);
+        tr(t).property("ADBE Anchor Point").setValue([it.width / 2, it.height * 0.93, 0]);
+        P(t).setValue([CFG.W / 2 + (spots[i][0] - CFG.W / 2) * mg * k2, CFG.H / 2 + (spots[i][1] - CFG.H / 2) * mg * k2, z - 1 - i * 0.1]);
         var t0 = 0.4 + i * 0.3;
         keys(tr(t).property("ADBE Scale"), [t0, t0 + 0.35, t0 + 0.55], [[0, 0, 100], [s * 1.08, s * 1.08, 100], [s, s, 100]], 70);
         var under = c.layer("DEPTH_L2") || c.layer("DEPTH_L1") || c.layer("DEPTH_L0");
@@ -820,10 +832,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-07-E  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-F  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-07-E — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-F — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
