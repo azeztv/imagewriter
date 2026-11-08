@@ -751,15 +751,18 @@ BUILD.S05 = function (c) {
     var fac = c.layer("DEPTH_L2");
     if (fac) {
         var smoke = fac.duplicate(); smoke.name = "SMOKE";
-        var si = addMask(smoke, [[0, 0], [2400, 0], [2400, 430], [0, 430]]);
-        mask(smoke, si).property("ADBE Mask Feather").setValue([90, 90]);
+        // smoke-only region: the lower edge runs just ABOVE each chimney rim, so the concrete
+        // stacks are never displaced (rims at y≈360–470 in the 2400×1350 layer)
+        var SM = [[0, 0], [2400, 0], [2400, 395], [1045, 395], [1000, 405], [955, 395], [905, 325], [865, 315], [805, 318], [770, 330], [680, 332], [600, 330], [0, 330]];
+        var si = addMask(smoke, SM);
+        mask(smoke, si).property("ADBE Mask Feather").setValue([22, 22]);
         try { mask(smoke, si).maskMode = MaskMode.INTERSECT; } catch (e) {}
-        var fi = addMask(fac, [[0, 0], [2400, 0], [2400, 430], [0, 430]]);
+        var fi = addMask(fac, SM);
         try { mask(fac, fi).maskMode = MaskMode.SUBTRACT; } catch (e) { mask(fac, fi).inverted = true; }
-        mask(fac, fi).property("ADBE Mask Feather").setValue([90, 90]);
-        turbulence(smoke, 28, 40, 70, c.duration);
+        mask(fac, fi).property("ADBE Mask Feather").setValue([22, 22]);
+        turbulence(smoke, 16, 24, 90, c.duration);
         keys(tr(smoke).property("ADBE Opacity"), [0.8, c.duration], [100, 45], 40);      // smoke thins out
-        P(smoke).expression = '[value[0]+time*6, value[1]-time*4, value[2]]';
+        P(smoke).expression = '[value[0]+time*2, value[1]-time*2, value[2]]';
     }
     var orb = c.layers.addShape(); orb.name = "CO2_ORB";
     newGroup(orb, "Orb"); ellipse(orb, "Orb", [280, 280]); fill(orb, "Orb", CFG.GREY, 55); stroke(orb, "Orb", CFG.WHITE, 4);
@@ -1046,10 +1049,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-K  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-L  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-K — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-L — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
