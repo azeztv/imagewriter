@@ -119,15 +119,18 @@ function edgeExpr(side) {
 }
 
 // Text layer. rtl=false for stand-alone numbers (keeps "-2.2" correct).
-// Every caption is a PARAGRAPH (box) text layer of fixed width. Its box edge is placed exactly
-// (right edge for side "r", centre for "c", left edge for "l") and AE aligns the words inside the
-// box, so nothing depends on measuring glyphs. pos = [edge x, first-line baseline y].
-var BOXES = {};
+// Every caption is point text whose ANCHOR is computed live by After Effects at render time
+// (sourceRectAtTime inside an expression): the anchor sits on the right edge (side r), centre (c)
+// or left edge (l) of the real rendered glyphs, on the first baseline (y = 0). The layer position
+// is then simply [edge x, baseline y]. Nothing is measured at build time.
+// The expression only uses JS-engine-safe syntax (no array + array).
+function anchorExpr(side) {
+    return 'var r=sourceRectAtTime(time,false);[' +
+        (side === "r" ? 'r.left+r.width' : side === "c" ? 'r.left+r.width/2' : 'r.left') + ',0]';
+}
 function text(comp, name, str, o) {
-    var size = o.size || 60, side = o.side || "r", lines = str.split("\r").length;
-    var BW = o.boxW || (side === "c" ? 1700 : 860), lead = Math.round(size * 1.28);
-    var BH = Math.round(lead * lines + size * 1.1);
-    var l = comp.layers.addBoxText([BW, BH], str);
+    var size = o.size || 60, side = o.side || "r";
+    var l = comp.layers.addText(str);
     l.name = name;
     var p = l.property("ADBE Text Properties").property("ADBE Text Document");
     var td = p.value;
@@ -142,19 +145,10 @@ function text(comp, name, str, o) {
     try { td.composerEngine = ComposerEngine.UNIVERSAL_TYPE_ENGINE; } catch (e) {}
     try { td.direction = (o.rtl === false) ? ParagraphDirection.DIRECTION_LEFT_TO_RIGHT : ParagraphDirection.DIRECTION_RIGHT_TO_LEFT; } catch (e) {}
     try { td.digitSet = DigitSet.ARABIC_DIGITS; } catch (e) {}   // 0-9, never ٠-٩
-    try { td.autoLeading = false; td.leading = lead; } catch (e) {}
+    try { td.autoLeading = false; td.leading = Math.round(size * 1.28); } catch (e) {}
     p.setValue(td);
-    var bx = { left: 0, top: 0 };
-    try { var rb = l.sourceRectAtTime(0, true); bx.left = rb.left; bx.top = rb.top; } catch (e) {}   // the paragraph box itself
-    tr(l).property("ADBE Anchor Point").setValue([bx.left, bx.top]);                                // anchor = box top-left
-    var left = side === "r" ? o.pos[0] - BW : side === "c" ? o.pos[0] - BW / 2 : o.pos[0];
-    var top = o.pos[1] - size * 0.92;
-    P(l).setValue([left, top]);
-    BOXES[name] = { left: left, top: top, BW: BW, size: size, side: side };
-    try {
-        var tdc = p.value, r0 = l.sourceRectAtTime(0, false);
-        DIAG.push(comp.name + " / " + name + " | box " + Math.round(left) + "→" + Math.round(left + BW) + " | glyphs left=" + Math.round(r0.left - bx.left) + " w=" + Math.round(r0.width) + " | font=" + tdc.font);
-    } catch (e) {}
+    tr(l).property("ADBE Anchor Point").expression = anchorExpr(side);
+    P(l).setValue([o.pos[0], o.pos[1]]);
     if (o.shadow !== false) shadow(l, o.shadowOp || 50);
     return l;
 }
@@ -263,18 +257,10 @@ function counter(comp, name, target, t0, dur, o) {
     return l;
 }
 
-// RTL unit word placed immediately to the LEFT of a number (same baseline).
-// The number box is right-aligned, so its right edge is known; only its width is measured.
-function stickLeftOf(l, refName, gap, unitName) {
-    var c = l.containingComp, r = c.layer(refName), te = c.duration - 0.04;
-    var rb = BOXES[refName], ub = BOXES[unitName || l.name];
-    var w = r.sourceRectAtTime(te, false).width;
-    var numberLeft = rb.left + rb.BW - w;
-    var baseline = rb.top + rb.size * 0.92;
-    var left = numberLeft - gap - ub.BW;                          // unit box is right-aligned too
-    P(l).setValue([left, baseline - ub.size * 0.92]);
-    ub.left = left; ub.top = baseline - ub.size * 0.92;
-    return numberLeft - gap;                                       // x where the unit's text ends on the left side… (its right edge)
+// RTL unit word placed immediately to the LEFT of a number on the same baseline (live, at render time).
+function stickLeftOf(l, refName, gap) {
+    P(l).expression = 'var n=thisComp.layer("' + refName + '");var r=n.sourceRectAtTime(time,false);' +
+        'var x=n.toComp([r.left,0])[0];[x-' + gap + ', n.position[1]]';
 }
 
 function solid(comp, color, name) { return comp.layers.addSolid(color, name, CFG.W, CFG.H, 1); }
@@ -297,8 +283,8 @@ function vignette(comp, op) {
 
 function scrimRight(comp, op) {
     var l = solid(comp, CFG.GREY, "Scrim");
-    var i = addMask(l, [[1060, -200], [2300, -200], [2300, 1280], [1060, 1280]]);
-    mask(l, i).property("ADBE Mask Feather").setValue([460, 0]);
+    var i = addMask(l, [[1180, -200], [2300, -200], [2300, 1280], [1180, 1280]]);
+    mask(l, i).property("ADBE Mask Feather").setValue([380, 0]);
     tr(l).property("ADBE Opacity").setValue(op || 70);
     return l;
 }
@@ -306,12 +292,13 @@ function scrimRight(comp, op) {
 function sectionTag(comp, str, y, t0, animate) {
     var name = "TAG_TXT";
     var t = text(comp, name, str, { w: "Black", size: CFG.TY.TAG, pos: [CFG.XR - 30, y], shadow: false });
-    var r = t.sourceRectAtTime(0, false), anc = tr(t).property("ADBE Anchor Point").value;
-    var bw = r.width + 60, bh = CFG.TY.TAG * 1.5;
-    var cy = P(t).value[1] + (r.top - anc[1]) + r.height / 2;
     var box = comp.layers.addShape(); box.name = "TAG_BOX";
-    newGroup(box, "Box"); rectItem(box, "Box", [bw, bh], [-bw / 2, 0]); fill(box, "Box", CFG.ORANGE);
-    P(box).setValue([CFG.XR, cy]);
+    newGroup(box, "Box"); rectItem(box, "Box", [200, 70], [-100, 0]); fill(box, "Box", CFG.ORANGE);
+    items(box, "Box").property(1).property("ADBE Vector Rect Size").expression =
+        'var r=thisComp.layer("' + name + '").sourceRectAtTime(time,false);[r.width+60, ' + Math.round(CFG.TY.TAG * 1.5) + ']';
+    items(box, "Box").property(1).property("ADBE Vector Rect Position").expression =
+        'var r=thisComp.layer("' + name + '").sourceRectAtTime(time,false);[-(r.width+60)/2,0]';
+    P(box).expression = 'var t=thisComp.layer("' + name + '");var r=t.sourceRectAtTime(time,false);[' + CFG.XR + ', t.position[1]+r.top+r.height/2]';
     box.moveAfter(t);
     if (animate !== false) {
         keys(tr(box).property("ADBE Scale"), [t0, t0 + 0.45], [[0, 100], [100, 100]], 85);
@@ -755,7 +742,6 @@ BUILD.S04 = function (c) {
     keys(grp(ln, "Head").property("ADBE Vector Transform Group").property("ADBE Vector Group Opacity"), [5.1, 5.3], [0, 100]);
     ln.threeDLayer = true; P(ln).setValue([CFG.W / 2, CFG.H / 2, -150]);
     shadow(ln, 40);
-    hud(c, 1010, 300, 0, 3.8);
     glint(c, "DEPTH_L2", 3.9);
 };
 
@@ -780,9 +766,9 @@ BUILD.S05 = function (c) {
     P(orb).setValue([760, 360]);
     keys(tr(orb).property("ADBE Scale"), [0.3, 0.8], [[0, 0], [100, 100]], 85);
     P(orb).expression = '[value[0], value[1]+Math.sin(time*1.6)*8]';
-    var co = text(c, "CO2", "CO", { w: "Black", size: 110, pos: [745, 400], rtl: false, side: "c", boxW: 400 });
-    var wCO = co.sourceRectAtTime(0, false).width;
-    var two = text(c, "CO2_sub", "2", { w: "Black", size: 58, pos: [745 + wCO / 2 + 4, 425], rtl: false, side: "l", boxW: 100 });
+    var co = text(c, "CO2", "CO", { w: "Black", size: 110, pos: [745, 400], rtl: false, side: "c" });
+    var two = text(c, "CO2_sub", "2", { w: "Black", size: 58, pos: [0, 425], rtl: false, side: "l" });
+    P(two).expression = 'var n=thisComp.layer("CO2");var r=n.sourceRectAtTime(time,false);[n.toComp([r.left+r.width,0])[0]+4, value[1]]';
     fadeIn(co, 0.6, 0.3); fadeIn(two, 0.7, 0.3);
     for (var i = 0; i < 3; i++) {
         var ch = c.layers.addShape(); ch.name = "Down_" + (i + 1);
@@ -836,9 +822,8 @@ BUILD.S07 = function (c) {
     var n = counter(c, "NUM", 700, 6.6, 1.8, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 6.5, 0.3, [0, 40]);
     var u = text(c, "UNIT", "مليار ريال", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 520 });
-    stickLeftOf(u, "NUM", 28, "UNIT");
+    stickLeftOf(u, "NUM", 28);
     fadeIn(u, 7.0, 0.4);
-    hud(c, 620, 380, 0, 6.6);
     glint(c, "DEPTH_L2", 6.8);
 };
 
@@ -849,7 +834,7 @@ BUILD.S08 = function (c) {
     var n = counter(c, "NUM", 77, 0.6, 1.8, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 0.5, 0.3, [0, 40]);
     var u = text(c, "UNIT", "برنامجا متكاملا", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 620 });
-    stickLeftOf(u, "NUM", 28, "UNIT");
+    stickLeftOf(u, "NUM", 28);
     fadeIn(u, 1.0, 0.4);
 };
 
@@ -869,14 +854,14 @@ BUILD.S09 = function (c) {
     label(c, "A1_WORD", "زراعة", CFG.Y.LABEL, 6.5);
     var n1 = counter(c, "A1_NUM", 100, 6.8, 1.6, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n1, 6.7, 0.3, [0, 30]);
-    var u1 = text(c, "A1_UNIT", "مليون شجرة", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 520 }); stickLeftOf(u1, "A1_NUM", 28, "A1_UNIT"); fadeIn(u1, 7.2, 0.4);
+    var u1 = text(c, "A1_UNIT", "مليون شجرة", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 520 }); stickLeftOf(u1, "A1_NUM", 28); fadeIn(u1, 7.2, 0.4);
     var tB = 9.6;
     var sep = rectR(c, "Divider", 560, 3, CFG.WHITE, [CFG.XR, CFG.Y.NUM + 45], 60);
     keys(tr(sep).property("ADBE Scale"), [tB - 0.3, tB + 0.2], [[0, 100], [100, 100]], 85);
     label(c, "A2_WORD", "استصلاح", CFG.Y.LABEL2, tB);
     var n2 = counter(c, "A2_NUM", 118, tB + 0.4, 1.2, { w: "Black", size: CFG.TY.NUM2, pos: [CFG.XR, CFG.Y.NUM2], rtl: false });
     fadeIn(n2, tB + 0.3, 0.3, [0, 30]);
-    var u2 = text(c, "A2_UNIT", "ألف هكتارا", { w: "Bold", size: CFG.TY.UNIT2, pos: [0, 0], boxW: 480 }); stickLeftOf(u2, "A2_NUM", 26, "A2_UNIT"); fadeIn(u2, tB + 0.8, 0.4);
+    var u2 = text(c, "A2_UNIT", "ألف هكتارا", { w: "Bold", size: CFG.TY.UNIT2, pos: [0, 0], boxW: 480 }); stickLeftOf(u2, "A2_NUM", 26); fadeIn(u2, tB + 0.8, 0.4);
 };
 
 // S10 — 1150 field surveys (≈ +0.8…4.2s), bigger spread
@@ -885,9 +870,8 @@ BUILD.S10 = function (c) {
     var n = counter(c, "NUM", 1150, 0.7, 2.6, { w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 0.6, 0.3, [0, 40]);
     var u = text(c, "UNIT", "مسحا ميدانيا", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 560 });
-    stickLeftOf(u, "NUM", 28, "UNIT");
+    stickLeftOf(u, "NUM", 28);
     fadeIn(u, 1.2, 0.4);
-    hud(c, 640, 560, 0, 0.8);
     for (var sc = 0; sc < 2; sc++) {
         var sl = c.layers.addShape(); sl.name = "ScanLine_" + (sc + 1);
         newGroup(sl, "L"); rectItem(sl, "L", [1150, 3], [575, 0]); fill(sl, "L", CFG.ORANGE);
@@ -926,7 +910,7 @@ BUILD.S11 = function (c) {
     var n = counter(c, "NUM", -2.2, 12.0, 1.6, { from: 0, decimals: 1, w: "Black", size: CFG.TY.NUM, pos: [CFG.XR, CFG.Y.NUM + 145], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 11.9, 0.3, [0, 30]);
     var u = text(c, "UNIT", "درجة", { w: "Bold", size: CFG.TY.UNIT, pos: [0, 0], boxW: 300 });
-    stickLeftOf(u, "NUM", 28, "UNIT");
+    stickLeftOf(u, "NUM", 28);
     fadeIn(u, 12.4, 0.4);
 };
 
@@ -1062,10 +1046,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-J  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-K  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-J — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-K — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
