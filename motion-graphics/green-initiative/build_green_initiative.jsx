@@ -338,10 +338,20 @@ function camera(c, move) {
     var cam = c.layers.addCamera("CAM", [CFG.W / 2, CFG.H / 2]);
     var Z = cam.property("ADBE Camera Options Group").property("ADBE Camera Zoom").value;
     var d = c.duration, m = move || {};
+    var dolly = (m.dolly === undefined ? 320 : m.dolly);
     var p0 = [CFG.W / 2 + (m.x0 || 0), CFG.H / 2 + (m.y0 || 0), -Z];
-    var p1 = [CFG.W / 2 + (m.x1 || 0), CFG.H / 2 + (m.y1 || 0), -Z + (m.dolly === undefined ? 320 : m.dolly)];
-    keys(P(cam), [0, d], [p0, p1], 40);
-    keys(tr(cam).property("ADBE Anchor Point"), [0, d], [[CFG.W / 2 + (m.px0 || 0), CFG.H / 2, 0], [CFG.W / 2 + (m.px1 || 0), CFG.H / 2, 0]], 40);
+    var p1 = [CFG.W / 2 + (m.x1 || 0), CFG.H / 2 + (m.y1 || 0), -Z + dolly];
+    // gentle arc: the mid key bows sideways and slightly closer (orbit feel around the subject)
+    var arc = m.arc === undefined ? 70 : m.arc;
+    var pm = [(p0[0] + p1[0]) / 2 + arc, (p0[1] + p1[1]) / 2 - arc * 0.25, (p0[2] + p1[2]) / 2 + Math.abs(arc) * 0.6];
+    var tEnd = Math.max(1.0, d - CFG.WIPE - 0.25);
+    var push = m.push === undefined ? 240 : m.push;               // push-through that rides the wipe into the next shot
+    var p2 = [p1[0], p1[1], p1[2] + push];
+    keys(P(cam), [0, tEnd / 2, tEnd, d], [p0, pm, p1, p2], 45);
+    try { P(cam).setTemporalEaseAtKey(4, [new KeyframeEase(0, 85)], [new KeyframeEase(0, 85)]); } catch (e) {}
+    keys(tr(cam).property("ADBE Anchor Point"), [0, tEnd], [[CFG.W / 2 + (m.px0 || 0), CFG.H / 2, 0], [CFG.W / 2 + (m.px1 || 0), CFG.H / 2, 0]], 40);
+    // micro handheld drift (very small, smooth)
+    P(cam).expression = '[value[0]+Math.sin(time*0.9)*5+Math.sin(time*2.3)*1.5, value[1]+Math.cos(time*0.7)*4, value[2]]';
     try {
         cam.property("ADBE Camera Options Group").property("ADBE Camera Depth of Field").setValue(1);
         cam.property("ADBE Camera Options Group").property("ADBE Camera Focus Distance").setValue(Z + 200);
@@ -375,20 +385,102 @@ function depthStack(c, id, Z) {
 var _seed = 7;
 function rnd() { _seed = (_seed * 9301 + 49297) % 233280; return _seed / 233280; }
 
-function particles(c, n, warm) {
+// Atmosphere. Fine dust motes drifting with a light wind (left → right) at many depths,
+// plus a few large out-of-focus bokeh motes close to the lens. wind: px/s.
+function particles(c, n, warm, wind) {
+    wind = wind === undefined ? 18 : wind;
     for (var i = 0; i < n; i++) {
         var l = c.layers.addShape(); l.name = "Dust_" + (i + 1);
-        newGroup(l, "D"); var sz = 3 + rnd() * 9; ellipse(l, "D", [sz, sz]);
-        fill(l, "D", (warm && rnd() > 0.6) ? CFG.ORANGE : CFG.WHITE);
+        newGroup(l, "D"); var sz = 2 + rnd() * 5; ellipse(l, "D", [sz, sz]);
+        fill(l, "D", (warm && rnd() > 0.55) ? [1, 0.78, 0.5] : [1, 0.97, 0.92]);
         l.threeDLayer = true;
-        P(l).setValue([rnd() * CFG.W * 1.3 - CFG.W * 0.15, rnd() * CFG.H * 1.2 - CFG.H * 0.1, -500 + rnd() * 1500]);
-        P(l).expression = 'var w=sub(wiggle(0.3,20),value);add(add(value,[Math.sin(time*0.4+' + i + ')*40, -time*' + (6 + rnd() * 14).toFixed(1) + ', 0]),w)';
-        tr(l).property("ADBE Opacity").setValue(20 + rnd() * 55);
-        try {
-            l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2");
-            l.property("ADBE Effect Parade").property(1).property(1).setValue(2 + rnd() * 6);
-        } catch (e) {}
+        var z = -300 + rnd() * 1700;
+        P(l).setValue([rnd() * CFG.W * 1.4 - CFG.W * 0.2, rnd() * CFG.H * 1.2 - CFG.H * 0.1, z]);
+        var spd = (wind * (0.6 + rnd() * 0.8)).toFixed(1);
+        P(l).expression = 'var W=' + (CFG.W * 1.6) + ';var x=value[0]+time*' + spd + ';x=((x+' + (CFG.W * 0.3) + ')%W+W)%W-' + (CFG.W * 0.3) + ';' +
+            '[x+Math.sin(time*0.8+' + i + ')*12, value[1]+Math.sin(time*0.5+' + (i * 1.7) + ')*18-time*3, value[2]]';
+        tr(l).property("ADBE Opacity").expression = (15 + rnd() * 45).toFixed(0) + '*(0.6+0.4*Math.sin(time*1.3+' + i + '))';
+        try { l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); l.property("ADBE Effect Parade").property(1).property(1).setValue(1 + rnd() * 3); } catch (e) {}
+        l.blendingMode = BlendingMode.ADD;
     }
+    // foreground bokeh
+    for (var j = 0; j < 5; j++) {
+        var b = c.layers.addShape(); b.name = "Bokeh_" + (j + 1);
+        newGroup(b, "B"); var bs = 60 + rnd() * 90; ellipse(b, "B", [bs, bs]); fill(b, "B", [1, 0.85, 0.65]);
+        b.threeDLayer = true;
+        P(b).setValue([rnd() * CFG.W, rnd() * CFG.H, -700 - rnd() * 300]);
+        P(b).expression = '[value[0]+time*' + (wind * 2.2).toFixed(1) + ', value[1]+Math.sin(time*0.4+' + j + ')*20, value[2]]';
+        tr(b).property("ADBE Opacity").setValue(6 + rnd() * 8);
+        try { b.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); b.property("ADBE Effect Parade").property(1).property(1).setValue(40); } catch (e) {}
+        b.blendingMode = BlendingMode.ADD;
+    }
+}
+
+// Soft volumetric god-rays from the key light (upper left), slowly breathing.
+function godRays(c, ox, oy, op) {
+    var l = c.layers.addShape(); l.name = "GodRays";
+    newGroup(l, "Rays");
+    for (var i = 0; i < 7; i++) {
+        var a = (18 + i * 7 + rnd() * 4) * Math.PI / 180, len = 2600, w = 60 + rnd() * 140;
+        var ex = Math.cos(a) * len, ey = Math.sin(a) * len, nx = -Math.sin(a) * w, ny = Math.cos(a) * w;
+        path(l, "Rays", [[0, 0], [ex + nx, ey + ny], [ex - nx, ey - ny]], true);
+    }
+    fill(l, "Rays", [1, 0.86, 0.66]);
+    P(l).setValue([ox, oy]);
+    tr(l).property("ADBE Rotation").expression = 'Math.sin(time*0.25)*3';
+    tr(l).property("ADBE Opacity").expression = (op || 14) + '*(0.75+0.25*Math.sin(time*0.6))';
+    try { l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); l.property("ADBE Effect Parade").property(1).property(1).setValue(60); } catch (e) {}
+    l.blendingMode = BlendingMode.ADD;
+    return l;
+}
+
+// Wind-blown sand: fast thin streaks skimming over a region (screen coords).
+function sandWind(c, x0, y0, x1, y1, n) {
+    for (var i = 0; i < n; i++) {
+        var l = c.layers.addShape(); l.name = "SandStreak_" + (i + 1);
+        newGroup(l, "S"); var ln = 40 + rnd() * 90; rectItem(l, "S", [ln, 1.5 + rnd() * 1.5], [0, 0], 1); fill(l, "S", [0.98, 0.86, 0.62]);
+        var y = y0 + rnd() * (y1 - y0), spd = 260 + rnd() * 260, ph = rnd() * 10;
+        P(l).setValue([x0, y]);
+        P(l).expression = 'var span=' + (x1 - x0 + 200) + ';var x=' + x0 + '-100+((time+' + ph.toFixed(2) + ')*' + spd.toFixed(0) + ')%span;[x, value[1]+Math.sin(time*3+' + i + ')*3]';
+        tr(l).property("ADBE Opacity").expression = 'var span=' + (x1 - x0 + 200) + ';var k=(((time+' + ph.toFixed(2) + ')*' + spd.toFixed(0) + ')%span)/span;' + (25 + rnd() * 35).toFixed(0) + '*Math.sin(k*Math.PI)';
+        try { l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); l.property("ADBE Effect Parade").property(1).property(1).setValue(2); } catch (e) {}
+        l.blendingMode = BlendingMode.ADD;
+    }
+}
+
+// Specular glint sweeping across a cut-out subject (masked to its alpha).
+function glint(c, subjectName, t0) {
+    var subj = c.layer(subjectName); if (!subj) return;
+    var g = c.layers.addShape(); g.name = "Glint";
+    newGroup(g, "Band"); path(g, "Band", [[-90, -900], [90, -900], [90, 900], [-90, 900]], true); fill(g, "Band", [1, 0.95, 0.85]);
+    tr(g).property("ADBE Rotation").setValue(22);
+    keys(P(g), [t0, t0 + 1.4], [[-300, CFG.H / 2], [CFG.W + 300, CFG.H / 2]], 55);
+    tr(g).property("ADBE Opacity").setValue(55);
+    try { g.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); g.property("ADBE Effect Parade").property(1).property(1).setValue(45); } catch (e) {}
+    g.blendingMode = BlendingMode.ADD;
+    var m = subj.duplicate(); m.name = subjectName + "_MATTE"; m.moveBefore(g);
+    try { g.setTrackMatte(m, TrackMatteType.ALPHA); } catch (e) { try { g.moveAfter(m); g.trackMatteType = TrackMatteType.ALPHA; } catch (e2) { LOG.push("glint matte: " + e2.toString()); } }
+    try { m.enabled = false; } catch (e) {}
+}
+
+// Bloom on emissive parts of a layer (blurred additive copy, gently pulsing).
+function bloom(c, name, amt) {
+    var src = c.layer(name); if (!src) return;
+    var b = src.duplicate(); b.name = name + "_BLOOM"; b.moveBefore(src);
+    try { b.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2"); b.property("ADBE Effect Parade").property(b.property("ADBE Effect Parade").numProperties).property(1).setValue(28); } catch (e) {}
+    b.blendingMode = BlendingMode.ADD;
+    tr(b).property("ADBE Opacity").expression = (amt || 30) + '*(0.8+0.2*Math.sin(time*2))';
+}
+
+// Animated turbulence (smoke billow / heat haze). amount keyed from a0 to a1 over the scene.
+function turbulence(l, a0, a1, size, dur) {
+    try {
+        l.property("ADBE Effect Parade").addProperty("ADBE Turbulent Displace");
+        var fx = function () { return l.property("ADBE Effect Parade").property(l.property("ADBE Effect Parade").numProperties); };
+        keys(fx().property(2), [0, dur], [a0, a1], 40);       // Amount
+        fx().property(3).setValue(size);                        // Size
+        fx().property(6).expression = 'time*120';               // Evolution
+    } catch (e) { LOG.push(l.name + ": turbulent displace " + e.toString()); }
 }
 
 function lightSweep(c, x0, x1) {
@@ -428,6 +520,7 @@ function hud(c, x, y, z, t0) {
 function newComp(name, dur, folderItem) {
     var c = app.project.items.addComp(name, CFG.W, CFG.H, 1, dur, CFG.FPS);
     c.parentFolder = folderItem;
+    try { c.motionBlur = true; c.shutterAngle = 180; } catch (e) {}
     return c;
 }
 
@@ -490,7 +583,8 @@ var BUILD = {};
 BUILD.S01 = function (c) {
     var Z = camera(c, { x0: -80, x1: 60, dolly: 380, px0: -40, px1: 30 });
     depthStack(c, "S01", Z);
-    particles(c, CFG.PARTICLES, true);
+    particles(c, CFG.PARTICLES, true, 22);
+    godRays(c, 120, -120, 13);
     lightSweep(c, 400, 900);
     vignette(c, 45);
     // Accurate 3D relief map (rendered from Natural Earth borders): body, orange glow, connection arcs
@@ -560,7 +654,9 @@ BUILD.S01 = function (c) {
 BUILD.S02 = function (c) {
     var Z = camera(c, { x0: 60, x1: -60, dolly: 300 });
     depthStack(c, "S02", Z);
-    particles(c, CFG.PARTICLES, true);
+    particles(c, CFG.PARTICLES, true, 26);
+    sandWind(c, 150, 420, 1050, 680, 22);
+    godRays(c, 120, -120, 11);
     lightSweep(c, 1300, 700);
     var fx = 1520, fy = 455, fw = 450, fh = 520;   // top ≥ 187, bottom ≤ 723 (safe area)
     var frame = rectR(c, "PhotoFrame", fw + 16, fh + 16, CFG.WHITE, [fx + (fw + 16) / 2, fy]);
@@ -594,8 +690,15 @@ BUILD.S03 = function (c) {
         var rain = solid(c, [0, 0, 0], "Rain");
         rain.property("ADBE Effect Parade").addProperty("CC Rainfall");
         c.layer("Rain").blendingMode = BlendingMode.SCREEN;
-        tr(c.layer("Rain")).property("ADBE Opacity").setValue(75);
+        tr(c.layer("Rain")).property("ADBE Opacity").setValue(85);
+        // rain falls only from the miniature cloud down onto the block (feathered cone)
+        var ri = addMask(c.layer("Rain"), [[420, 200], [720, 200], [860, 560], [300, 560]]);
+        mask(c.layer("Rain"), ri).property("ADBE Mask Feather").setValue([60, 60]);
     } catch (e) { LOG.push("S03 rain: " + e.toString()); }
+    // lightning: two quick soft flashes
+    var fl = solid(c, [0.85, 0.9, 1], "Lightning"); fl.blendingMode = BlendingMode.ADD;
+    keys(tr(fl).property("ADBE Opacity"), [1.10, 1.14, 1.22, 1.26, 1.36, 3.60, 3.64, 3.78], [0, 22, 4, 16, 0, 0, 18, 0], 10);
+    particles(c, Math.round(CFG.PARTICLES * 0.5), false, 30);
     scrimRight(c, 65);
     accentBar(c, CFG.XR, 380, 160, 0.4);
     headline(c, "التصدي للتغيرات\rالمناخية", 490, 0.5, 96);
@@ -623,11 +726,24 @@ BUILD.S04 = function (c) {
     ln.threeDLayer = true; P(ln).setValue([CFG.W / 2, CFG.H / 2, -150]);
     shadow(ln, 40);
     hud(c, 1010, 300, 0, 3.8);
+    glint(c, "DEPTH_L2", 3.9);
+    godRays(c, 120, -120, 10);
 };
 
 // S05 — emissions / CO2
 BUILD.S05 = function (c) {
     goalsScene(c, "S05", "تقليل الانبعاثات\rالكربونية", false, { x0: 50, x1: -50, dolly: 300 });
+    var fac = c.layer("DEPTH_L2");
+    if (fac) {
+        var smoke = fac.duplicate(); smoke.name = "SMOKE";
+        var si = addMask(smoke, [[0, 0], [2400, 0], [2400, 430], [0, 430]]);
+        mask(smoke, si).property("ADBE Mask Feather").setValue([90, 90]);
+        var fi = addMask(fac, [[0, 0], [2400, 0], [2400, 430], [0, 430]]);
+        mask(fac, fi).inverted = true; mask(fac, fi).property("ADBE Mask Feather").setValue([90, 90]);
+        turbulence(smoke, 28, 40, 70, c.duration);
+        keys(tr(smoke).property("ADBE Opacity"), [0.8, c.duration], [100, 45], 40);      // smoke thins out
+        P(smoke).expression = '[value[0]+time*6, value[1]-time*4, value[2]]';
+    }
     var orb = c.layers.addShape(); orb.name = "CO2_ORB";
     newGroup(orb, "Orb"); ellipse(orb, "Orb", [280, 280]); fill(orb, "Orb", CFG.GREY, 55); stroke(orb, "Orb", CFG.WHITE, 4);
     P(orb).setValue([760, 360]);
@@ -647,6 +763,7 @@ BUILD.S05 = function (c) {
 
 // S06 — afforestation: real 3D trees appearing one after another
 BUILD.S06 = function (c) {
+    sandWind(c, 0, 250, 1350, 650, 26);
     var Z = goalsScene(c, "S06", "التوسع في التشجير\rوحماية البيئة", false, { x0: -120, x1: 60, dolly: 420, px0: -80, px1: 0 });
     // trees stand on the sand tile: [x, y] on the 1920-wide plate, on-screen scale (%)
     var spots = [[300, 240, 9], [520, 225, 8], [740, 215, 8], [940, 205, 7], [1060, 200, 6],
@@ -666,6 +783,7 @@ BUILD.S06 = function (c) {
         keys(tr(t).property("ADBE Scale"), [t0, t0 + 0.35, t0 + 0.55], [[0, 0, 100], [s * 1.08, s * 1.08, 100], [s, s, 100]], 70);
         var under = c.layer("DEPTH_L2") || c.layer("DEPTH_L1") || c.layer("DEPTH_L0");
         if (under) t.moveBefore(under);
+        tr(t).property("ADBE Z Rotation").expression = 'Math.sin(time*1.8+' + i + ')*1.6+Math.sin(time*4.1+' + (i * 2) + ')*0.5';
     }
 };
 
@@ -690,11 +808,13 @@ BUILD.S07 = function (c) {
     stickLeftOf(u, "NUM", 30);
     fadeIn(u, 7.0, 0.4);
     hud(c, 620, 380, 0, 6.6);
+    glint(c, "DEPTH_L2", 6.8);
 };
 
 // S08 — 77 programmes (cue ≈ +0.7…2.6s)
 BUILD.S08 = function (c) {
     plansScene(c, "S08", false, { x0: 80, x1: -40, dolly: 340, px0: 40, px1: -20 });
+    bloom(c, "DEPTH_L2", 32);
     var n = counter(c, "NUM", 77, 0.6, 1.8, { w: "Black", size: 250, pos: [CFG.XR, 620], rtl: false, color: CFG.ORANGE });
     fadeIn(n, 0.5, 0.3, [0, 40]);
     var u = text(c, "UNIT", "برنامجا متكاملا", { w: "Bold", size: 84, pos: [0, 0] });
@@ -736,6 +856,15 @@ BUILD.S10 = function (c) {
     var u = text(c, "UNIT", "مسحا ميدانيا", { w: "Bold", size: 84, pos: [CFG.XR, 690] });
     revealWords(u, 1.2, 0.7, 30);
     hud(c, 640, 560, 0, 0.8);
+    for (var sc = 0; sc < 2; sc++) {
+        var sl = c.layers.addShape(); sl.name = "ScanLine_" + (sc + 1);
+        newGroup(sl, "L"); rectItem(sl, "L", [1150, 3], [575, 0]); fill(sl, "L", CFG.ORANGE);
+        newGroup(sl, "G"); rectItem(sl, "G", [1150, 40], [575, 0]); fill(sl, "G", CFG.ORANGE, 18);
+        var st = 0.9 + sc * 2.4;
+        keys(P(sl), [st, st + 2.0], [[0, 260], [0, 820]], 30);
+        keys(tr(sl).property("ADBE Opacity"), [st, st + 0.2, st + 1.8, st + 2.0], [0, 100, 100, 0], 30);
+        sl.blendingMode = BlendingMode.ADD;
+    }
 };
 
 // S11 — Riyadh, thermometer, -2.2 (cues: "انخفاض" ≈ +7.7s, "2.2 درجة" ≈ +12.2s)
@@ -746,6 +875,10 @@ BUILD.S11 = function (c) {
     lightSweep(c, 500, 1000);
     scrimRight(c, 55);
     headline(c, "انخفاض درجة حرارة\rمراكز المدن", 260, 7.6, 76);
+    if (c.layer("DEPTH_L2")) turbulence(c.layer("DEPTH_L2"), 6, 0, 45, 13.6);
+    if (c.layer("DEPTH_L0")) turbulence(c.layer("DEPTH_L0"), 4, 0, 45, 13.6);
+    glint(c, "DEPTH_L2", 12.2);
+    godRays(c, 120, -120, 12);
     var th = c.layers.addShape(); th.name = "Thermometer";
     newGroup(th, "Tube"); rectItem(th, "Tube", [46, 300], [0, -150], 23); fill(th, "Tube", CFG.WHITE, 25); stroke(th, "Tube", CFG.WHITE, 5);
     newGroup(th, "Mercury"); rectItem(th, "Mercury", [20, 250], [0, -125], 10); fill(th, "Mercury", CFG.ORANGE);
@@ -770,7 +903,9 @@ BUILD.S11 = function (c) {
 BUILD.S12 = function (c) {
     var Z = camera(c, { x0: 0, x1: 0, y0: 30, y1: -20, dolly: -420 });
     depthStack(c, "S12", Z);
-    particles(c, CFG.PARTICLES, true);
+    particles(c, CFG.PARTICLES, true, 14);
+    sandWind(c, 350, 420, 1500, 700, 14);
+    godRays(c, 120, -120, 15);
     lightSweep(c, 1400, 900);
     vignette(c, 60);
     var title = text(c, "TITLE", "مبادرة السعودية الخضراء", { w: "Black", size: 120, pos: [CFG.W / 2, 560], side: "c" });
@@ -817,6 +952,11 @@ for (var s = 0; s < ORDER.length; s++) {
     _seed = 7 + s * 31;
     try { BUILD[id](sc); } catch (err) { LOG.push(id + ": " + err.toString() + " (line " + err.line + ")"); }
     try { checkSafe(sc, id); } catch (err) { LOG.push(id + " safe-check: " + err.toString()); }
+    for (var mb = 1; mb <= sc.numLayers; mb++) {
+        var ml = sc.layer(mb);
+        if (/^(Dust|Bokeh|GodRays|Scrim|Vignette|LightSweep|Lightning)/.test(ml.name)) continue;
+        try { ml.motionBlur = true; } catch (e) {}
+    }
     main.layers.add(sc);
     var L = main.layer(1);
     L.startTime = CFG.T[id];
@@ -845,10 +985,10 @@ if (GUIDE) {
 }
 
 main.openInViewer();
-try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-G  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
+try { var lf = f("build_log.txt"); lf.encoding = "UTF-8"; lf.open("w"); lf.write("BUILD 2026-11-08-H  TEXT_SHIFT=" + CFG.TEXT_SHIFT + "\n\n--- TEXT DIAGNOSTICS ---\n" + DIAG.join("\n") + "\n\n--- NOTES ---\n" + (LOG.length ? LOG.join("\n") : "OK — no errors")); lf.close(); } catch (e) {}
 app.endUndoGroup();
 
-alert("BUILD 2026-11-08-G — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
+alert("BUILD 2026-11-08-H — تم بناء المشروع ✔\n\nComp: GREEN_INITIATIVE_MAIN_v2 (" + TOTAL.toFixed(2) + "s)\n" +
       "Fonts: " + font("Black") + " / " + font("Bold") + " / " + font("Regular") + "\n" +
       (PHOTO ? "" : "• ضع صورة ولي العهد في assets/crown_prince.png\n") +
       (FLAG ? "" : "• ضع العلم الرسمي في assets/saudi_flag.png\n") +
