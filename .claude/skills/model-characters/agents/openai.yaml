@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model 3D Characters"
+  short_description: "Model 3D characters from a 2D image or idea in any style: low poly, stylized sculpt, base mesh or realistic"
+  default_prompt: "Use $model-characters to turn this character reference into a 3D character: "

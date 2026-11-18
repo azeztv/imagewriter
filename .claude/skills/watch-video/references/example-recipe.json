@@ -1,0 +1,67 @@
+{
+ "version": 1,
+ "source": {"file": "MYvTymwMvcRUjizt.mp4", "duration": 29.53, "width": 1920, "height": 1080, "voice": "none"},
+ "summary": "A 30 second launch film for an AI image tool: a spoken-in-type promise, the product revealed inside a real room, one prompt typed in close-up, the system visibly working, the result multiplying into a gallery, then the tagline.",
+ "grammar": [
+  "Word, then thing: every text beat is answered by a beat that shows what the words promised.",
+  "One focal element per beat, centred, with wide empty space around it.",
+  "Text is short (2 to 7 words), sentence case, and builds word by word or letter by letter; it never just appears.",
+  "A bass hit marks each arrival: it lands on the hard cut or up to 0.25 s before it, never after.",
+  "Silence is used three times, each right after a payoff, so the next beat starts from quiet.",
+  "The interface is shown twice at two scales: whole screen for context, then an extreme close-up of the one line being typed.",
+  "The wait is made visible: a short list of steps ticks in, one soft rising note per step.",
+  "One result first, held in silence, then many: the gallery arrives on a run of hits that speeds up.",
+  "Light neutral backdrop for system and result beats, saturated gradient only for the opening and the tagline."
+ ],
+ "style": {"palette": ["peach to violet gradient", "#e6e6e6 neutral", "sky blue interface", "black type"], "type": "one geometric sans, regular weight, small relative to the frame; braces { } frame the key phrase", "motifs": ["pixel-edged wipe between backdrops", "four small black squares drifting to the corners of the phrase", "false-colour (thermal) version of footage resolving into the real picture", "cards with a slight 3D tilt"], "camera": "no camera moves on text beats; a slow push on the room; a jump from wide interface to macro on the typed line"},
+ "beats": [
+  {"id": "hook", "role": "promise, first half", "start": 0.0, "end": 2.6, "enter": "start", "backdrop": "gradient", "text": "Imagine to have all your tool", "visual": "soft gradient with a blurred silhouette drifting; one line of small type centred", "motion": "type writes in left to right over 1 s while its colour sweeps from pink to white", "evidence": "seen", "technique": "type"},
+  {"id": "one-place", "role": "promise, second half", "start": 2.6, "end": 4.6, "enter": "wipe", "enter_seconds": 0.6, "backdrop": "light", "text": "{ in one place }", "visual": "pixel-edged wipe clears the gradient to flat neutral; phrase inside braces", "motion": "words arrive one at a time (in, one, place) about 0.35 s apart; four black squares drift outward", "evidence": "measured", "technique": "type"},
+  {"id": "introducing", "role": "handover to the product", "start": 4.6, "end": 6.48, "enter": "hold", "backdrop": "light", "text": "{ intro ▪▪▪ ducing }", "visual": "the word splits and three tiny thumbnails of the product's output sit in the gap", "motion": "the gap opens, thumbnails swap twice, then everything fades out over the last 0.4 s", "evidence": "seen", "technique": "type"},
+  {"id": "reveal", "role": "product reveal in a real place", "start": 6.48, "end": 8.64, "enter": "fade", "enter_seconds": 1.36, "backdrop": "footage", "text": "", "visual": "a room with a desk and one monitor, first in false colour, resolving into the real picture; the product is on the monitor", "motion": "false colour dissolves to real over 1.4 s with a slow push in", "evidence": "measured", "technique": "3d"},
+  {"id": "establish", "role": "hold on the product", "start": 8.64, "end": 10.0, "enter": "cut", "backdrop": "footage", "text": "", "visual": "closer shot of the same desk, monitor centred, wordmark readable on screen", "motion": "still, about 1.4 s, in silence", "evidence": "measured", "technique": "3d"},
+  {"id": "interface", "role": "the interface, whole", "start": 10.0, "end": 10.68, "enter": "cut", "backdrop": "ui", "text": "", "visual": "the product's start screen full frame: wordmark behind one prompt bar", "motion": "the first letters are typed", "evidence": "measured", "technique": "ui"},
+  {"id": "typing", "role": "the user's one action", "start": 10.68, "end": 12.4, "enter": "cut", "backdrop": "ui", "text": "a neo goth model for a clo|", "visual": "extreme close-up of the prompt line, type as tall as a third of the frame", "motion": "letters appear at typing speed while the line scrolls left to keep the caret in view", "evidence": "measured", "technique": "ui"},
+  {"id": "sent", "role": "action completed", "start": 12.4, "end": 14.28, "enter": "morph", "enter_seconds": 0.24, "backdrop": "ui", "text": "Create a neo goth model for a clothing brand.", "visual": "back to the whole interface with the finished prompt; the cursor presses send", "motion": "snap back to wide in 0.25 s, click at 13.0, bar empties, then a held second", "evidence": "measured", "technique": "ui"},
+  {"id": "working", "role": "the system works", "start": 14.28, "end": 17.4, "enter": "cut", "backdrop": "light", "text": "Building Image", "visual": "a title, then four steps listed under it (Processing, Generating, Image, Assemble), then a grid of coloured dots", "motion": "title slides to the top-left; one step ticks in about every 0.3 s; the dots gather where the result will be", "evidence": "measured", "technique": "graphic"},
+  {"id": "result", "role": "first result", "start": 17.4, "end": 20.36, "enter": "morph", "enter_seconds": 0.4, "backdrop": "light", "text": "", "visual": "one portrait card centred on the neutral backdrop; it flips to show alternative takes", "motion": "dots resolve into the card in 0.4 s; the card flips about once a second; held in silence at the end", "evidence": "measured", "technique": "image"},
+  {"id": "gallery", "role": "many results, the payoff", "start": 20.36, "end": 24.4, "enter": "morph", "enter_seconds": 3.28, "backdrop": "light", "inner_cuts": [22.8], "text": "you / gets better / create", "visual": "the card multiplies into a row of cards that grows from the centre; single words appear beside it", "motion": "a new card on every hit; the hits come faster in the middle (0.24 s, then 0.13 s, then 0.21 s apart)", "evidence": "measured", "technique": "image"},
+  {"id": "tagline", "role": "tagline and proof", "start": 24.4, "end": 29.53, "enter": "fade", "enter_seconds": 0.24, "backdrop": "gradient", "text": "The AI powered platform for modern creatives", "visual": "warm gradient returns; small centred line; in the last 1.5 s a product screenshot card flies in", "motion": "line builds word by word over 1.5 s, holds 2 s in silence, then the card arrives", "evidence": "seen", "technique": "type"}
+ ],
+ "cues": [
+  {"time": 0.54, "kind": "riser", "length": 1.8, "level": -18, "on": "hook", "note": "texture under the type, growing"},
+  {"time": 2.44, "kind": "bass", "length": 0.5, "level": 0, "pitch": 109, "on": "one-place", "note": "0.16 s before the wipe starts"},
+  {"time": 4.66, "kind": "bass", "length": 1.1, "level": -3, "pitch": 62, "on": "introducing", "note": "long low note under the word splitting"},
+  {"time": 6.52, "kind": "whoosh", "length": 1.4, "level": -19, "on": "reveal", "note": "airy sweep through the dissolve"},
+  {"time": 8.64, "kind": "bass", "length": 0.4, "level": 0, "pitch": 109, "on": "establish", "note": "exactly on the cut; loudest moment"},
+  {"time": 10.76, "kind": "click", "length": 0.03, "level": -26, "repeat": {"count": 3, "every": 0.09}, "on": "typing", "note": "key clicks"},
+  {"time": 11.74, "kind": "hit", "length": 0.9, "level": -30, "on": "typing", "note": "low rumble under the last words"},
+  {"time": 13.02, "kind": "click", "length": 0.25, "level": -10, "on": "sent", "note": "the send press"},
+  {"time": 14.04, "kind": "bass", "length": 0.5, "level": -6, "on": "working", "note": "0.24 s before the cut"},
+  {"time": 14.84, "kind": "bass", "length": 0.4, "level": 0, "on": "working", "note": "title lands"},
+  {"time": 15.24, "kind": "blip", "length": 0.1, "level": -12, "pitch": 1200, "repeat": {"count": 3, "every": 0.28}, "on": "working", "note": "one per step; each a little higher"},
+  {"time": 16.24, "kind": "blip", "length": 0.1, "level": -12, "pitch": 1800, "on": "working", "note": "last step"},
+  {"time": 16.78, "kind": "riser", "length": 0.6, "level": -6, "on": "working", "note": "dots gather"},
+  {"time": 17.42, "kind": "bass", "length": 0.5, "level": 0, "on": "result", "note": "the result lands"},
+  {"time": 18.68, "kind": "click", "length": 0.04, "level": -10, "on": "result", "note": "card flip"},
+  {"time": 20.08, "kind": "hit", "length": 0.12, "level": -9, "repeat": {"count": 4, "every": 0.24}, "on": "gallery", "note": "starts 0.28 s before the cards move"},
+  {"time": 21.08, "kind": "hit", "length": 0.1, "level": -8, "repeat": {"count": 2, "every": 0.2}, "on": "gallery"},
+  {"time": 21.56, "kind": "hit", "length": 0.1, "level": -8, "repeat": {"count": 2, "every": 0.24}, "on": "gallery"},
+  {"time": 22.0, "kind": "hit", "length": 0.08, "level": -8, "repeat": {"count": 4, "every": 0.13}, "on": "gallery", "note": "fastest run"},
+  {"time": 22.58, "kind": "hit", "length": 0.1, "level": -8, "repeat": {"count": 5, "every": 0.21}, "on": "gallery"},
+  {"time": 24.16, "kind": "whoosh", "length": 1.6, "level": -15, "on": "tagline", "note": "0.24 s before the fade"},
+  {"time": 28.14, "kind": "whoosh", "length": 0.5, "level": -23, "on": "tagline", "note": "screenshot card flies in"}
+ ],
+ "silences": [
+  {"start": 9.12, "end": 10.5, "purpose": "a breath on the revealed product before the interface"},
+  {"start": 13.3, "end": 14.0, "purpose": "the wait after pressing send"},
+  {"start": 18.74, "end": 20.08, "purpose": "the first result is held before the gallery bursts"},
+  {"start": 26.16, "end": 28.06, "purpose": "the tagline is read in silence"}
+ ],
+ "not_reproduced": [
+  "the footage of the room",
+  "the generated portraits",
+  "the wordmark and name",
+  "the exact sounds; only their kind, timing and level"
+ ]
+}

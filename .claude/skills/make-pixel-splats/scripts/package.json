@@ -1,0 +1,8 @@
+{
+  "name": "pixel-splats",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@codepawlhq/crucible": "^0.20.0"
+  }
+}

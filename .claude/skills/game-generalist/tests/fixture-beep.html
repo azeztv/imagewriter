@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture beep</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 14px sans-serif; }
+  #flash { position: fixed; inset: 0; background: #fff; display: none; }
+</style>
+</head>
+<body>
+<p>Controls: none. From 1.3 s on, every 1.3 s, this page flashes white (0.5 s) and beeps (0.15 s) starting at the same moment.</p>
+<div id="flash"></div>
+<script>
+const FIRST_EVENT_DELAY_MS = 1300;
+const EVENT_PERIOD_MS = 1300;
+const EVENT_LENGTH_MS = 150;
+const FLASH_LENGTH_MS = 500;
+const audioContext = new AudioContext();
+const flashElement = document.getElementById('flash');
+
+function playBeepWithFlash() {
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.frequency.value = 880;
+  gain.gain.value = 0.5;
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  flashElement.style.display = 'block';
+  requestAnimationFrame(() => {
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + EVENT_LENGTH_MS / 1000);
+  });
+  setTimeout(() => { flashElement.style.display = 'none'; }, FLASH_LENGTH_MS);
+}
+
+// Repeats, so a capture that starts a little late or misses one flash still holds a whole one.
+setTimeout(() => {
+  playBeepWithFlash();
+  setInterval(playBeepWithFlash, EVENT_PERIOD_MS);
+}, FIRST_EVENT_DELAY_MS);
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture title screen</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 14px sans-serif; }
+  canvas { display: block; background: #222; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="320" height="120"></canvas>
+<p>Controls: any key starts. The round shows the title until a key (or ?autostart=1), plays 1 s,
+pauses by itself for 3 s, plays 1.5 s more and is then lost. Progress never rises.</p>
+<script>
+const startsAutomatically = new URLSearchParams(location.search).get('autostart') === '1';
+const FIRST_PLAY_MS = 1000;
+const PAUSE_MS = 3000;
+const SECOND_PLAY_MS = 1500;
+const canvas = document.getElementById('stage');
+const context = canvas.getContext('2d');
+
+let started = startsAutomatically;
+let roundStartedAt = performance.now();
+
+function currentStatus() {
+  if (!started) return 'title';
+  const elapsedMs = performance.now() - roundStartedAt;
+  if (elapsedMs < FIRST_PLAY_MS) return 'playing';
+  if (elapsedMs < FIRST_PLAY_MS + PAUSE_MS) return 'paused';
+  if (elapsedMs < FIRST_PLAY_MS + PAUSE_MS + SECOND_PLAY_MS) return 'playing';
+  return 'lost';
+}
+
+function startRound() {
+  started = true;
+  roundStartedAt = performance.now();
+}
+
+addEventListener('keydown', () => {
+  if (!started) startRound();
+});
+
+function draw() {
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#fff';
+  context.fillText(currentStatus(), 10, 20);
+  requestAnimationFrame(draw);
+}
+
+window.__game = {
+  state() { return { status: currentStatus(), progress: 0 }; },
+  restart() { startRound(); },
+  seed() {},
+};
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

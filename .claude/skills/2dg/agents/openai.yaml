@@ -1,0 +1,6 @@
+interface:
+  display_name: "/2dg — 2D Generalist Command"
+  short_description: "Launch 2d-generalist with a mode (vox-now, script, photos, map, chart-timeline, archival-collage, design, audit)"
+  default_prompt: "Use $2dg "
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture 2D late context</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 14px sans-serif; }
+  canvas { display: block; background: #222; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="320" height="120"></canvas>
+<p>Controls: arrows (right moves toward the goal). Reach the green goal before the timer ends.</p>
+<script>
+// Variant switches: ?broken=1 throws a console error and the goal never counts;
+// ?nostep=1 leaves out window.__game.step().
+const queryParameters = new URLSearchParams(location.search);
+const isBroken = queryParameters.get('broken') === '1';
+const hasStepHook = queryParameters.get('nostep') !== '1';
+const canvas = document.getElementById('stage');
+// Regression for the stolen-context bug: the 2D context is requested only after the first rAF frame,
+// so a probe that grabbed a webgl context on this canvas earlier would make this call return null.
+let context = null;
+let frameCount = 0;
+
+const START_X = 20;
+const GOAL_X = 280;
+const GOAL_RADIUS = 12;
+const SPEED_PIXELS_PER_SECOND = 100;
+const TIME_LIMIT_SECONDS = 8;
+const FIXED_STEP_SECONDS = 1 / 60;
+
+let randomSeedState = 1;
+function nextRandom() {
+  randomSeedState = (randomSeedState + 0x6D2B79F5) >>> 0;
+  let mixed = Math.imul(randomSeedState ^ (randomSeedState >>> 15), 1 | randomSeedState);
+  mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+  return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+}
+
+const heldKeys = new Set();
+let status = 'playing';
+let playerX = START_X;
+let hazardY = 60;
+let elapsedSeconds = 0;
+let restartCount = 0;
+let accumulatedSeconds = 0;
+let lastTimestamp = null;
+let hazardPhase = 0;
+let tickCount = 0;
+
+addEventListener('keydown', (event) => heldKeys.add(event.key));
+addEventListener('keyup', (event) => heldKeys.delete(event.key));
+
+function resetRound() {
+  status = 'playing';
+  playerX = START_X;
+  elapsedSeconds = 0;
+  tickCount = 0;
+  accumulatedSeconds = 0;
+  hazardPhase = nextRandom() * Math.PI * 2;
+}
+
+function stepSimulation(keysDown = heldKeys) {
+  if (status !== 'playing') return;
+  tickCount += 1;
+  if (keysDown.has('ArrowRight')) playerX += SPEED_PIXELS_PER_SECOND * FIXED_STEP_SECONDS;
+  if (keysDown.has('ArrowLeft')) playerX -= SPEED_PIXELS_PER_SECOND * FIXED_STEP_SECONDS;
+  playerX = Math.max(0, Math.min(canvas.width, playerX));
+  elapsedSeconds += FIXED_STEP_SECONDS;
+  hazardPhase += FIXED_STEP_SECONDS * 3;
+  hazardY = 60 + Math.sin(hazardPhase) * 40;
+  if (!isBroken && playerX >= GOAL_X - GOAL_RADIUS) {
+    playerX = GOAL_X;
+    status = 'won';
+  } else if (elapsedSeconds >= TIME_LIMIT_SECONDS) {
+    status = 'lost';
+  }
+}
+
+function draw() {
+  if (context === null) return;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#3c3';
+  context.beginPath();
+  context.arc(GOAL_X, 60, GOAL_RADIUS, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = '#e33';
+  context.fillRect(150, hazardY - 6, 12, 12);
+  context.fillStyle = '#fff';
+  context.beginPath();
+  context.arc(playerX, 60, 6, 0, Math.PI * 2);
+  context.fill();
+}
+
+function frame(timestamp) {
+  frameCount += 1;
+  if (frameCount === 2) {
+    context = canvas.getContext('2d');
+    if (context === null) console.error('2d context unavailable: it was taken by another type');
+  }
+  if (lastTimestamp !== null) accumulatedSeconds += (timestamp - lastTimestamp) / 1000;
+  lastTimestamp = timestamp;
+  while (accumulatedSeconds >= FIXED_STEP_SECONDS) {
+    stepSimulation();
+    accumulatedSeconds -= FIXED_STEP_SECONDS;
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+if (isBroken) {
+  setTimeout(() => {
+    throw new Error('fixture broken variant');
+  }, 1000);
+}
+
+window.__game = {
+  state() {
+    const progressPercent = Math.round(((playerX - START_X) / (GOAL_X - START_X)) * 100);
+    return {
+      status,
+      progress: Math.max(0, progressPercent),
+      round: restartCount,
+      tick: tickCount,
+      dt: FIXED_STEP_SECONDS,
+    };
+  },
+  restart() {
+    restartCount += 1;
+    resetRound();
+  },
+  seed(value) {
+    randomSeedState = value >>> 0;
+    restartCount = 0;
+    resetRound();
+  },
+};
+
+if (hasStepHook) {
+  // Advances the fixed-step simulation synchronously with the given key names held.
+  window.__game.step = (ticks, keysDown = []) => {
+    const heldNames = new Set(keysDown);
+    for (let index = 0; index < ticks; index += 1) stepSimulation(heldNames);
+  };
+}
+
+resetRound();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

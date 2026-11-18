@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Generalist Studio (Prototype, Game, Polish)"
+  short_description: "Original playable games from a one-line promise: greybox, look pick, build, bot-run playtest gates"
+  default_prompt: "Use $game-generalist to make this game: "

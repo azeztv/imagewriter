@@ -1,0 +1,6 @@
+interface:
+  display_name: "/3dg — 3D Generalist Command"
+  short_description: "Launch 3d-generalist with a mode (cutaway, story, world, character, asset)"
+  default_prompt: "Use $3dg "
+policy:
+  allow_implicit_invocation: false
