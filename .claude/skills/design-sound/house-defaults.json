@@ -1,0 +1,7 @@
+{
+ "_about": "Mix values only the owner's ears can set. Written by scripts/ab_test.py pick, never tuned by an agent on its own. Start from these and let your own blind picks move them.",
+ "hold_ms": 150,
+ "cue_margin_dba": 18.0,
+ "unmask_db": -3.0,
+ "history": []
+}

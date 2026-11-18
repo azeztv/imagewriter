@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture 2d filters</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 14px sans-serif; }
+  canvas { display: block; background: #222; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="640" height="360"></canvas>
+<p>Controls: none. A 2D canvas with heavy per-frame filters.</p>
+<script>
+// Every frame draws several shapes through context.filter blur and grayscale, the pattern that
+// pushes Chrome off a GPU-accelerated 2D canvas when the page reads pixels back.
+const canvas = document.getElementById('stage');
+const context = canvas.getContext('2d');
+const FILTERS = ['blur(6px)', 'grayscale(1)', 'blur(3px) grayscale(0.5)', 'blur(10px)', 'grayscale(0.7)'];
+let frameCount = 0;
+
+function draw() {
+  frameCount += 1;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  FILTERS.forEach((filterText, index) => {
+    context.filter = filterText;
+    context.fillStyle = `hsl(${(frameCount * 3 + index * 60) % 360}, 80%, 55%)`;
+    context.beginPath();
+    context.arc(100 + index * 110, 180 + Math.sin(frameCount / 20 + index) * 60, 50, 0, Math.PI * 2);
+    context.fill();
+  });
+  context.filter = 'none';
+  requestAnimationFrame(draw);
+}
+
+window.__game = {
+  state() { return { status: 'playing', progress: frameCount % 100 }; },
+  restart() {},
+  seed() {},
+};
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

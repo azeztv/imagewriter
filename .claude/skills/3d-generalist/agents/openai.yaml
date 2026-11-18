@@ -1,0 +1,4 @@
+interface:
+  display_name: "3D Generalist Studio (Shorts, Cutaways, Worlds, Acting)"
+  short_description: "Full-pipeline 3D content creation across Blender, Three.js and Crucible with anti-slop QA"
+  default_prompt: "Use $3d-generalist to build this 3D piece: "

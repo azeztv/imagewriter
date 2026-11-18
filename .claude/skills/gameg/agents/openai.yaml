@@ -1,0 +1,6 @@
+interface:
+  display_name: "/gameg — Game Generalist Command"
+  short_description: "Launch game-generalist with a mode (prototype, game, polish)"
+  default_prompt: "Use $gameg "
+policy:
+  allow_implicit_invocation: false
